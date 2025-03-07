@@ -72,6 +72,7 @@ def login_required(view):
 
 # Database Models
 class User(db.Model):
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(200), nullable=False)
@@ -91,13 +92,14 @@ class User(db.Model):
         return f'<User {self.username}>'
 
 class Participant(db.Model):
+    __tablename__ = 'participants'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(120), nullable=True)
     profile_url = db.Column(db.String(500), nullable=False)
     current_points = db.Column(db.Integer, default=0)
     last_updated = db.Column(db.DateTime, default=datetime.utcnow)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     
     # Relationship with PointsHistory
     history = db.relationship('PointsHistory', backref='participant', lazy=True)
@@ -106,8 +108,9 @@ class Participant(db.Model):
         return f'<Participant {self.name}>'
 
 class PointsHistory(db.Model):
+    __tablename__ = 'points_history'
     id = db.Column(db.Integer, primary_key=True)
-    participant_id = db.Column(db.Integer, db.ForeignKey('participant.id'), nullable=False)
+    participant_id = db.Column(db.Integer, db.ForeignKey('participants.id'), nullable=False)
     points = db.Column(db.Integer, nullable=False)
     date_recorded = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -115,6 +118,7 @@ class PointsHistory(db.Model):
         return f'<PointsHistory {self.points} points for {self.participant_id} on {self.date_recorded}>'
 
 class LastRefresh(db.Model):
+    __tablename__ = 'last_refresh'
     id = db.Column(db.Integer, primary_key=True)
     refresh_date = db.Column(db.DateTime, default=datetime.utcnow)
     
@@ -670,11 +674,41 @@ def setup_database(setup_key):
     if setup_key != expected_key:
         return "Access denied", 403
     
+    recreate = request.args.get('recreate', 'false').lower() == 'true'
+    
     try:
+        # Get engine directly to run raw SQL for inspection
+        engine = db.engine
+        inspector = db.inspect(engine)
+        existing_tables = inspector.get_table_names()
+        
+        # Log the database connection and tables
+        result = f"Connected to: {engine.url}<br>"
+        result += f"Existing tables: {', '.join(existing_tables) if existing_tables else 'None'}<br>"
+        
+        if recreate and existing_tables:
+            result += "Dropping existing tables...<br>"
+            db.drop_all()
+        
+        result += "Creating tables...<br>"
         db.create_all()
-        return "Database tables created successfully!"
+        
+        # Verify tables after creation
+        inspector = db.inspect(engine)
+        tables_after = inspector.get_table_names()
+        result += f"Tables after setup: {', '.join(tables_after)}<br>"
+        
+        # Test a simple query to verify models
+        result += "<br>Testing models:<br>"
+        try:
+            user_count = User.query.count()
+            result += f"- User model OK. Count: {user_count}<br>"
+        except Exception as e:
+            result += f"- User model ERROR: {str(e)}<br>"
+            
+        return f"<h1>Database Setup</h1>{result}"
     except Exception as e:
-        return f"Error creating database tables: {str(e)}", 500
+        return f"<h1>Error</h1>Error creating database tables: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080) 
