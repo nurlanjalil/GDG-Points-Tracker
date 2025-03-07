@@ -61,6 +61,11 @@ def handle_exception(e):
         app.logger.error(f"Database error: {str(e)}")
         flash('A database error occurred. Please try again later.', 'error')
     
+    # Check for attribute errors (often template-related)
+    elif isinstance(e, AttributeError):
+        app.logger.error(f"Template/attribute error: {str(e)}")
+        flash('An error occurred while rendering the page. Our team has been notified.', 'error')
+    
     # Return a friendly error page
     return render_template('error.html', error=str(e)), 500
 
@@ -148,7 +153,7 @@ class LastRefresh(db.Model):
 # Helper function to get points from a profile URL
 def get_points(link):
     # Maximum number of retries
-    max_retries = 2
+    max_retries = 3  # Increased from 2 to 3
     retries = 0
     
     while retries <= max_retries:
@@ -165,7 +170,7 @@ def get_points(link):
             headers = {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
             }
-            response = requests.get(link, timeout=15, headers=headers)  # Increased timeout, added user-agent
+            response = requests.get(link, timeout=20, headers=headers)  # Increased timeout from 15 to 20 seconds
             response.raise_for_status()  # Raise an exception for bad status codes
 
             # Check for empty responses
@@ -176,32 +181,47 @@ def get_points(link):
             # Parse the page content
             soup = BeautifulSoup(response.content, 'html.parser')
 
-            # Find the first element with class 'profile-league'
+            # Try different approaches to find points
+            
+            # Approach 1: Find the first element with class 'profile-league'
             profile_league = soup.find(class_='profile-league')
 
             if profile_league:
                 # Find the <strong> tag inside 'profile-league' and get its text
                 strong_tag = profile_league.find('strong')
-                if not strong_tag:
-                    app.logger.warning(f"Found profile-league but no strong tag in {link}")
-                    return 0
-                    
-                strong_text = strong_tag.get_text(strip=True)
-                if not strong_text:
-                    app.logger.warning(f"Empty strong tag text in {link}")
-                    return 0
-                    
-                # Extract just the numeric value
-                points_text = strong_text.replace(' points', '').strip()
-                if not points_text.isdigit():
-                    app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
-                    return 0
-                    
-                points = int(points_text)
-                return points
-            else:
-                app.logger.warning(f"No profile-league element found in {link}")
-                return 0
+                if strong_tag:
+                    strong_text = strong_tag.get_text(strip=True)
+                    if strong_text:
+                        # Extract just the numeric value
+                        points_text = strong_text.replace(' points', '').strip()
+                        try:
+                            if points_text.isdigit():
+                                points = int(points_text)
+                                app.logger.info(f"Successfully found {points} points from {link}")
+                                return points
+                        except ValueError:
+                            app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
+                
+            # Approach 2: Look for points in alternative locations
+            # Find all span elements with numbers
+            number_spans = soup.find_all('span', string=lambda s: s and s.strip().isdigit())
+            for span in number_spans:
+                if span.parent and 'point' in span.parent.get_text().lower():
+                    try:
+                        points = int(span.get_text().strip())
+                        app.logger.info(f"Found alternative points value {points} from {link}")
+                        return points
+                    except ValueError:
+                        continue
+            
+            # If we get here, no valid points were found
+            app.logger.warning(f"No profile-league element or points found in {link}")
+            
+            # If this was the final retry, log the HTML content for debugging
+            if retries == max_retries:
+                app.logger.debug(f"HTML content from {link}: {soup.prettify()[:500]}...")
+                
+            return 0
                 
         except requests.Timeout:
             retries += 1
@@ -557,51 +577,76 @@ def upload_file():
 @app.route('/participants')
 @login_required
 def view_participants():
-    participants = Participant.query.filter_by(user_id=g.user.id).all()
-    
-    # Prepare participants with additional data for the template
-    enriched_participants = []
-    for participant in participants:
-        # Get history records sorted by date (most recent first)
-        history_sorted = sorted(participant.history, key=lambda x: x.date_recorded, reverse=True)
+    try:
+        # Get current time for template
+        now = datetime.utcnow()
         
-        # Current points (latest)
-        current_points = participant.current_points
+        # Get all participants for this user
+        participants = Participant.query.filter_by(user_id=g.user.id).all()
         
-        # Previous week points
-        previous_points = 0
-        weekly_change = 0
+        # Prepare participants with additional data for the template
+        enriched_participants = []
+        for participant in participants:
+            try:
+                # Get history records sorted by date (most recent first)
+                history_sorted = sorted(participant.history, key=lambda x: x.date_recorded, reverse=True)
+                
+                # Current points (latest)
+                current_points = participant.current_points
+                
+                # Previous week points
+                previous_points = 0
+                weekly_change = 0
+                
+                if history_sorted and len(history_sorted) > 1:
+                    # If we have at least two history records, calculate the difference
+                    current = history_sorted[0].points
+                    previous = history_sorted[1].points
+                    previous_points = previous
+                    weekly_change = current - previous
+                elif history_sorted and len(history_sorted) == 1:
+                    # If we only have one record, use it as current
+                    current = history_sorted[0].points
+                    previous_points = 0
+                    weekly_change = current
+                
+                # Add enriched data (ensuring all data is properly structured)
+                enriched_participants.append({
+                    'id': participant.id,
+                    'name': participant.name,
+                    'email': participant.email,
+                    'profile_url': participant.profile_url,
+                    'current_points': current_points,
+                    'previous_points': previous_points,
+                    'weekly_change': weekly_change,
+                    'last_updated': participant.last_updated  # This is a datetime object from the model
+                })
+            except Exception as e:
+                app.logger.error(f"Error processing participant {participant.id}: {str(e)}")
+                # Still include the participant with default values if there's an error
+                enriched_participants.append({
+                    'id': participant.id,
+                    'name': participant.name,
+                    'email': participant.email or 'Not provided',
+                    'profile_url': participant.profile_url,
+                    'current_points': participant.current_points,
+                    'previous_points': 0,
+                    'weekly_change': 0,
+                    'last_updated': participant.last_updated
+                })
         
-        if history_sorted and len(history_sorted) > 1:
-            # If we have at least two history records, calculate the difference
-            current = history_sorted[0].points
-            previous = history_sorted[1].points
-            previous_points = previous
-            weekly_change = current - previous
-        elif history_sorted and len(history_sorted) == 1:
-            # If we only have one record, use it as current
-            current = history_sorted[0].points
-            previous_points = 0
-            weekly_change = current
+        # Sort by current points (descending)
+        enriched_participants = sorted(enriched_participants, key=lambda x: x['current_points'], reverse=True)
         
-        # Add enriched data
-        enriched_participants.append({
-            'id': participant.id,
-            'name': participant.name,
-            'profile_url': participant.profile_url,
-            'current_points': current_points,
-            'previous_points': previous_points,
-            'weekly_change': weekly_change,
-            'last_updated': participant.last_updated,
-            'email': participant.email,
-            # Pass the original participant for backward compatibility
-            'participant': participant
-        })
-    
-    # Sort by weekly change (descending)
-    enriched_participants = sorted(enriched_participants, key=lambda x: x['weekly_change'], reverse=True)
-    
-    return render_template('participants.html', participants=enriched_participants)
+        return render_template('participants.html', 
+                              participants=enriched_participants, 
+                              now=now,
+                              timedelta=timedelta)
+        
+    except Exception as e:
+        app.logger.error(f"Error in view_participants: {str(e)}")
+        flash('An error occurred while loading participants. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 # Create a backup of the database
 def backup_database():
@@ -941,6 +986,45 @@ def admin_participant_detail(participant_id):
                           participant=participant, 
                           history=history,
                           owner=owner)
+
+@app.route('/delete-all-participants', methods=['POST'])
+@login_required
+def delete_all_participants():
+    try:
+        # Get all participants for current user
+        participants = Participant.query.filter_by(user_id=g.user.id).all()
+        
+        if not participants:
+            flash('You have no participants to delete.', 'info')
+            return redirect(url_for('index'))
+        
+        # Count the number of participants to delete
+        count = len(participants)
+        
+        # Create a backup before making changes
+        backup_path = backup_database()
+        if backup_path:
+            app.logger.info(f"Database backup created at {backup_path} before deletion")
+        
+        # Delete all participants for this user
+        for participant in participants:
+            # First delete history records to avoid foreign key constraint errors
+            PointsHistory.query.filter_by(participant_id=participant.id).delete()
+        
+        # Now delete the participants
+        Participant.query.filter_by(user_id=g.user.id).delete()
+        
+        # Commit the changes
+        db.session.commit()
+        
+        flash(f'Successfully deleted {count} participants. You can now upload a new CSV file.', 'success')
+        return redirect(url_for('index'))
+        
+    except Exception as e:
+        app.logger.error(f"Error deleting participants: {str(e)}")
+        db.session.rollback()
+        flash('An error occurred while deleting participants. Please try again.', 'error')
+        return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080) 
