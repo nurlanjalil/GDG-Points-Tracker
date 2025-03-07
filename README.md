@@ -1,15 +1,14 @@
 # GDG Points Tracker
 
-A Flask-based web application to track Google Developer Groups community program participants' points from Google Cloud Skills Boost profiles.
+A simple Flask-based web application to track Google Developer Groups community program participants' points from Google Cloud Skills Boost profiles.
 
 ## Features
 
-- **User Authentication System**: Each user can manage their own set of participants
 - **CSV Upload**: Upload participant data through CSV files
+- **Fast Points Scraping**: Retrieves current points from Google Cloud Skills Boost profiles
 - **Concurrent Processing**: Fast point tracking with multi-threading
-- **Weekly Points Tracking**: Track points earned each week
-- **Historical Data**: Maintain history of points over time
-- **User-friendly Interface**: Clean Bootstrap interface with responsive design
+- **Copy Functionality**: Easily copy points data for use in other applications
+- **Simple Interface**: Clean Bootstrap interface with responsive design
 
 ## Screenshots
 
@@ -47,38 +46,34 @@ source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-4. Initialize the database:
+4. Run the application:
 
 ```bash
-python -c "from app import app, db; with app.app_context(): db.create_all()"
-```
-
-5. Run the application:
-
-```bash
-flask run
+python app.py
 ```
 
 The application will be available at http://127.0.0.1:5000/
 
 ## Usage
 
-1. Register a new account
-2. Login to the system
-3. Upload a CSV file with participant data
+1. Upload a CSV file with participant data
    - CSV must contain 'Name' and 'profile' columns
    - 'profile' column should contain Google Cloud Skills Boost profile URLs
-4. View participants' current points
-5. Refresh points weekly to track progress
+2. View participants' current points
+3. Use the "Copy Points Only" or "Copy Name and Points" buttons to copy data to clipboard
 
 ## CSV Format
 
 The application expects a CSV file with the following format:
 
-| Name | profile | mail (optional) |
-|------|---------|----------------|
-| John Doe | https://www.cloudskillsboost.google/public_profiles/... | john@example.com |
-| Jane Smith | https://www.cloudskillsboost.google/public_profiles/... | jane@example.com |
+| Name | profile |
+|------|---------|
+| John Doe | https://www.cloudskillsboost.google/public_profiles/... |
+| Jane Smith | https://www.cloudskillsboost.google/public_profiles/... |
+
+## How It Works
+
+The application uses BeautifulSoup to scrape points data from Google Cloud Skills Boost profile pages. When a CSV is uploaded, the app processes each profile URL in parallel to fetch the points values efficiently.
 
 ## Deployment
 
@@ -101,5 +96,5 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 - Google Developer Groups program
 - Google Cloud Skills Boost platform
-- Flask and SQLAlchemy frameworks
+- Flask framework
 - Bootstrap for the UI components 

@@ -1,4 +1,4 @@
-Name,mail,profile
-John Doe,john.doe@example.com,https://www.cloudskillsboost.google/public_profiles/example1
-Jane Smith,jane.smith@example.com,https://www.cloudskillsboost.google/public_profiles/example2
-Alex Johnson,alex.johnson@example.com,https://www.cloudskillsboost.google/public_profiles/example3 
+Name,profile
+John Doe,https://www.cloudskillsboost.google/public_profiles/example1
+Jane Smith,https://www.cloudskillsboost.google/public_profiles/example2
+Alex Johnson,https://www.cloudskillsboost.google/public_profiles/example3 

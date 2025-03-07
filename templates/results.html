@@ -5,99 +5,127 @@
 {% block content %}
 <div class="row">
     <div class="col-12">
-        <h1>Points Tracking Results</h1>
+        <h1>Points Results</h1>
         
         <div class="alert alert-success mb-4">
             <h4 class="alert-heading"><i class="bi bi-check-circle"></i> Processing Complete!</h4>
-            <p class="lead mb-0">The data has been processed successfully. Here are the current points for your participants:</p>
+            <p class="lead mb-0">Points data has been retrieved successfully. Here are the current points:</p>
         </div>
         
         <div class="d-flex justify-content-between mb-3">
             <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
                 <i class="bi bi-arrow-left"></i> Upload Another CSV
             </a>
-            <a href="{{ url_for('view_participants') }}" class="btn btn-outline-secondary">
-                View All Participants
-            </a>
+            <div>
+                <button id="copy-points-btn" class="btn btn-outline-success me-2">
+                    <i class="bi bi-clipboard"></i> Copy Points Only
+                </button>
+                <button id="copy-name-points-btn" class="btn btn-outline-info">
+                    <i class="bi bi-clipboard-data"></i> Copy Name and Points
+                </button>
+            </div>
         </div>
         
-        <div class="table-responsive">
-            <table class="table table-striped table-hover">
-                <thead class="table-dark">
-                    <tr>
-                        <th>#</th>
-                        <th>Name</th>
-                        <th>Weekly Points</th>
-                        <th>Current Points</th>
-                        {% if results[0].profile_url is defined %}
-                        <th>Profile</th>
-                        {% endif %}
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for result in results %}
-                    <tr>
-                        <td>{{ loop.index }}</td>
-                        <td>{{ result.name }}</td>
-                        <td>
-                            {% if result.weekly_points is string %}
-                                <span class="badge bg-info">{{ result.weekly_points }}</span>
-                            {% elif result.weekly_points > 0 %}
-                                <span class="badge bg-success">+{{ result.weekly_points }}</span>
-                            {% elif result.weekly_points < 0 %}
-                                <span class="badge bg-danger">{{ result.weekly_points }}</span>
-                            {% else %}
-                                <span class="badge bg-secondary">{{ result.weekly_points }}</span>
-                            {% endif %}
-                        </td>
-                        <td>{{ result.current_points if result.current_points is defined else result.lifelong_points }}</td>
-                        {% if result.profile_url is defined %}
-                        <td>
-                            <a href="{{ result.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                View Profile
-                            </a>
-                        </td>
-                        {% endif %}
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        
-        <!-- Summary Statistics -->
-        <div class="row mt-4">
-            <div class="col-md-4">
-                <div class="card bg-light mb-3">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Total Participants</h5>
-                        <p class="card-text display-4">{{ results|length }}</p>
-                    </div>
-                </div>
+        <div class="card shadow">
+            <div class="card-header bg-light">
+                <h3 class="mb-0">Participant Points</h3>
             </div>
-            <div class="col-md-4">
-                <div class="card bg-light mb-3">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Points Status</h5>
-                        <p class="card-text">
-                            {% if results[0].weekly_points is string %}
-                                <span class="badge bg-info fs-6">Initial Upload</span>
-                                <p class="mt-2">Weekly points will be available after the next refresh (in 7 days)</p>
-                            {% else %}
-                                <span class="badge bg-success fs-6">Weekly Update</span>
-                            {% endif %}
-                        </p>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-4">
-                <div class="card bg-light mb-3">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">Next Refresh</h5>
-                        <p class="card-text">Available in 7 days</p>
-                    </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover mb-0" id="results-table">
+                        <thead class="table-primary">
+                            <tr>
+                                <th>#</th>
+                                <th>Name</th>
+                                <th>Points</th>
+                                <th>Profile</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for result in results %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ result.name }}</td>
+                                <td>{{ result.points }}</td>
+                                <td>
+                                    {% if result.profile_url == "#" %}
+                                        <span class="badge bg-warning text-dark">Invalid URL</span>
+                                    {% else %}
+                                        <a href="{{ result.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            View Profile
+                                        </a>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Function to copy points only
+    document.getElementById('copy-points-btn').addEventListener('click', function() {
+        // Create a text representation of just the points
+        let text = "";
+        
+        // Get all rows
+        const rows = document.querySelectorAll('#results-table tbody tr');
+        rows.forEach(row => {
+            // Get just the points (3rd column)
+            const points = row.querySelectorAll('td')[2].textContent.trim();
+            text += points + '\n';
+        });
+        
+        // Copy to clipboard
+        copyToClipboard(text, this, '<i class="bi bi-clipboard"></i> Copy Points Only');
+    });
+    
+    // Function to copy name and points
+    document.getElementById('copy-name-points-btn').addEventListener('click', function() {
+        // Create a text representation of name and points
+        let text = "";
+        
+        // Get all rows
+        const rows = document.querySelectorAll('#results-table tbody tr');
+        rows.forEach(row => {
+            // Get name and points (2nd and 3rd columns)
+            const name = row.querySelectorAll('td')[1].textContent.trim();
+            const points = row.querySelectorAll('td')[2].textContent.trim();
+            text += name + '\t' + points + '\n';
+        });
+        
+        // Copy to clipboard
+        copyToClipboard(text, this, '<i class="bi bi-clipboard-data"></i> Copy Name and Points');
+    });
+    
+    // Helper function for clipboard operations
+    function copyToClipboard(text, button, originalHTML) {
+        navigator.clipboard.writeText(text).then(() => {
+            // Show success message
+            button.innerHTML = '<i class="bi bi-check"></i> Copied!';
+            button.classList.remove('btn-outline-success', 'btn-outline-info');
+            button.classList.add('btn-success');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                button.innerHTML = originalHTML;
+                button.classList.remove('btn-success');
+                if (originalHTML.includes('Points Only')) {
+                    button.classList.add('btn-outline-success');
+                } else {
+                    button.classList.add('btn-outline-info');
+                }
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            alert('Failed to copy to clipboard. Please try selecting and copying manually.');
+        });
+    }
+</script>
 {% endblock %} 
