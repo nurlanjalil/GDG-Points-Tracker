@@ -63,6 +63,9 @@
 {% endblock %}
 
 {% block content %}
+<!-- Store file_id as a data attribute in a hidden element -->
+<div id="processing-data" data-file-id="{{ file_id }}" style="display:none;"></div>
+
 <div class="row">
     <div class="col-12">
         <h1 class="mb-4">Processing Participants</h1>
@@ -160,25 +163,94 @@
 </div>
 
 <script>
-    // Store the file ID as a global variable - moved here from head section
-    var GLOBAL_FILE_ID = "{{ file_id }}";
-    
-    document.addEventListener('DOMContentLoaded', function() {
-        // Ensure GLOBAL_FILE_ID is defined and not empty before proceeding
-        if (typeof GLOBAL_FILE_ID === 'undefined' || !GLOBAL_FILE_ID) {
-            console.error('File ID is not defined or empty');
-            addLogEntry('Error: File ID is missing or undefined', 'error');
-            updateStatus('Error: File ID is missing or undefined', 'error');
-            return;
-        }
+    // Helper functions - defined first to ensure they're available
+    function addLogEntry(message, level) {
+        const logContainer = document.getElementById('log-container');
+        if (!logContainer) return;
         
-        // Start the process when the page loads
-        startProcessing();
-    });
+        const entry = document.createElement('div');
+        entry.className = `log-entry log-${level}`;
+        
+        const timestamp = new Date().toLocaleTimeString();
+        entry.innerHTML = `[${timestamp}] ${message}`;
+        
+        logContainer.appendChild(entry);
+        logContainer.scrollTop = logContainer.scrollHeight;
+    }
     
+    function updateStatus(message, type) {
+        const statusDiv = document.getElementById('status-message');
+        const statusText = document.getElementById('status-text');
+        if (!statusDiv || !statusText) return;
+        
+        statusText.textContent = message;
+        
+        // Update alert class
+        statusDiv.className = 'alert';
+        if (type === 'info') {
+            statusDiv.classList.add('alert-info');
+        } else if (type === 'success') {
+            statusDiv.classList.add('alert-success');
+        } else if (type === 'warning') {
+            statusDiv.classList.add('alert-warning');
+        } else if (type === 'error') {
+            statusDiv.classList.add('alert-danger');
+        }
+    }
+
+    function updateProgressBar(percent) {
+        const progressBar = document.getElementById('progress-bar');
+        if (!progressBar) return;
+        
+        progressBar.style.width = `${percent}%`;
+        progressBar.setAttribute('aria-valuenow', percent);
+        progressBar.textContent = `${percent}%`;
+    }
+    
+    function updateBatchProgress(current, total) {
+        const progressBar = document.getElementById('batch-progress');
+        if (!progressBar) return;
+        
+        const percent = Math.floor((current / total) * 100);
+        progressBar.style.width = `${percent}%`;
+        progressBar.setAttribute('aria-valuenow', percent);
+        progressBar.textContent = `${percent}%`;
+    }
+    
+    function updateStepStatus(stepId, status) {
+        const step = document.getElementById(stepId);
+        if (!step) return;
+        
+        step.className = `step step-${status}`;
+        
+        const statusDiv = step.querySelector('.step-status');
+        if (!statusDiv) return;
+        
+        if (status === 'active') {
+            statusDiv.innerHTML = '<div class="spinner-border text-primary step-spinner" role="status"><span class="visually-hidden">Loading...</span></div>';
+        } else if (status === 'completed') {
+            statusDiv.innerHTML = '<i class="bi bi-check-circle-fill text-success" style="font-size: 1.5rem;"></i>';
+        } else if (status === 'error') {
+            statusDiv.innerHTML = '<i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 1.5rem;"></i>';
+        } else {
+            statusDiv.innerHTML = '';
+        }
+    }
+    
+    // Get the file ID from the data attribute
+    function getFileId() {
+        const processingDataElement = document.getElementById('processing-data');
+        if (!processingDataElement) {
+            console.error('Processing data element not found');
+            return null;
+        }
+        return processingDataElement.getAttribute('data-file-id');
+    }
+    
+    // Main processing function
     function startProcessing() {
-        // Get the file ID from the global variable
-        const fileId = GLOBAL_FILE_ID;
+        // Get the file ID from the DOM element
+        const fileId = getFileId();
         
         if (!fileId) {
             addLogEntry('No file ID provided', 'error');
@@ -252,7 +324,10 @@
     
     function scrapePoints(fileId, batchNum, totalBatches) {
         updateStepStatus('step-scrape', 'active');
-        document.getElementById('current-batch').textContent = batchNum;
+        const currentBatchElement = document.getElementById('current-batch');
+        if (currentBatchElement) {
+            currentBatchElement.textContent = batchNum;
+        }
         updateBatchProgress(batchNum, totalBatches);
         
         updateStatus(`Scraping points for batch ${batchNum}/${totalBatches}...`, 'info');
@@ -354,10 +429,13 @@
     
     function displayResults(results, stats) {
         // Show results container
-        document.getElementById('results-container').style.display = 'block';
+        const resultsContainer = document.getElementById('results-container');
+        if (!resultsContainer) return;
+        resultsContainer.style.display = 'block';
         
         // Display stats
         const statsContainer = document.getElementById('stats-container');
+        if (!statsContainer) return;
         statsContainer.innerHTML = `
             <div class="col-md-4">
                 <div class="card bg-light mb-3">
@@ -387,6 +465,7 @@
         
         // Display results table
         const tableBody = document.getElementById('results-table-body');
+        if (!tableBody) return;
         tableBody.innerHTML = '';
         
         results.forEach((result, index) => {
@@ -414,74 +493,20 @@
         });
     }
     
-    function updateProgressBar(percent) {
-        const progressBar = document.getElementById('progress-bar');
-        if (!progressBar) return;
+    // Start processing when the DOM is fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        // Log that the page is loaded
+        console.log('Processing page loaded');
+        console.log('File ID from data attribute:', getFileId());
         
-        progressBar.style.width = `${percent}%`;
-        progressBar.setAttribute('aria-valuenow', percent);
-        progressBar.textContent = `${percent}%`;
-    }
-    
-    function updateBatchProgress(current, total) {
-        const progressBar = document.getElementById('batch-progress');
-        if (!progressBar) return;
-        
-        const percent = Math.floor((current / total) * 100);
-        progressBar.style.width = `${percent}%`;
-        progressBar.setAttribute('aria-valuenow', percent);
-        progressBar.textContent = `${percent}%`;
-    }
-    
-    function updateStepStatus(stepId, status) {
-        const step = document.getElementById(stepId);
-        if (!step) return;
-        
-        step.className = `step step-${status}`;
-        
-        const statusDiv = step.querySelector('.step-status');
-        if (!statusDiv) return;
-        
-        if (status === 'active') {
-            statusDiv.innerHTML = '<div class="spinner-border text-primary step-spinner" role="status"><span class="visually-hidden">Loading...</span></div>';
-        } else if (status === 'completed') {
-            statusDiv.innerHTML = '<i class="bi bi-check-circle-fill text-success" style="font-size: 1.5rem;"></i>';
-        } else if (status === 'error') {
-            statusDiv.innerHTML = '<i class="bi bi-exclamation-circle-fill text-danger" style="font-size: 1.5rem;"></i>';
-        } else {
-            statusDiv.innerHTML = '';
+        try {
+            // Start the processing
+            startProcessing();
+        } catch (error) {
+            console.error('Error during process initialization:', error);
+            addLogEntry(`Error: ${error.message}`, 'error');
+            updateStatus(`Error during initialization: ${error.message}`, 'error');
         }
-    }
-    
-    function updateStatus(message, type) {
-        const statusDiv = document.getElementById('status-message');
-        const statusText = document.getElementById('status-text');
-        
-        statusText.textContent = message;
-        
-        // Update alert class
-        statusDiv.className = 'alert';
-        if (type === 'info') {
-            statusDiv.classList.add('alert-info');
-        } else if (type === 'success') {
-            statusDiv.classList.add('alert-success');
-        } else if (type === 'warning') {
-            statusDiv.classList.add('alert-warning');
-        } else if (type === 'error') {
-            statusDiv.classList.add('alert-danger');
-        }
-    }
-    
-    function addLogEntry(message, level) {
-        const logContainer = document.getElementById('log-container');
-        const entry = document.createElement('div');
-        entry.className = `log-entry log-${level}`;
-        
-        const timestamp = new Date().toLocaleTimeString();
-        entry.innerHTML = `[${timestamp}] ${message}`;
-        
-        logContainer.appendChild(entry);
-        logContainer.scrollTop = logContainer.scrollHeight;
-    }
+    });
 </script>
 {% endblock %} 
