@@ -85,6 +85,9 @@
                                     <a href="{{ p.profile_url }}" target="_blank" class="btn btn-sm btn-outline-secondary">
                                         <i class="bi bi-box-arrow-up-right"></i> Profile
                                     </a>
+                                    <a href="{{ url_for('admin_participant_detail', participant_id=p.id) }}" class="btn btn-sm btn-outline-info">
+                                        <i class="bi bi-info-circle"></i> Details
+                                    </a>
                                 </div>
                             </td>
                         </tr>

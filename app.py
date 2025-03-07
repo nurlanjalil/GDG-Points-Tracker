@@ -127,36 +127,82 @@ class LastRefresh(db.Model):
 
 # Helper function to get points from a profile URL
 def get_points(link):
-    try:
-        # Check if the link is invalid or a placeholder
-        if not link or link == 'INVALID_PROFILE_URL' or pd.isna(link):
-            app.logger.info(f"Skipping invalid profile URL: {link}")
+    # Maximum number of retries
+    max_retries = 2
+    retries = 0
+    
+    while retries <= max_retries:
+        try:
+            # Check if the link is invalid or a placeholder
+            if not link or link == 'INVALID_PROFILE_URL' or pd.isna(link) or 'INVALID_PROFILE_URL' in link:
+                app.logger.info(f"Skipping invalid profile URL: {link}")
+                return 0
+                
+            # Small random delay to avoid rate limiting
+            time.sleep(0.2 + (0.3 * random.random()))
+            
+            # Make a GET request to the link with a reasonable timeout
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            response = requests.get(link, timeout=15, headers=headers)  # Increased timeout, added user-agent
+            response.raise_for_status()  # Raise an exception for bad status codes
+
+            # Check for empty responses
+            if not response.content:
+                app.logger.warning(f"Empty response from {link}")
+                raise ValueError("Empty response from server")
+
+            # Parse the page content
+            soup = BeautifulSoup(response.content, 'html.parser')
+
+            # Find the first element with class 'profile-league'
+            profile_league = soup.find(class_='profile-league')
+
+            if profile_league:
+                # Find the <strong> tag inside 'profile-league' and get its text
+                strong_tag = profile_league.find('strong')
+                if not strong_tag:
+                    app.logger.warning(f"Found profile-league but no strong tag in {link}")
+                    return 0
+                    
+                strong_text = strong_tag.get_text(strip=True)
+                if not strong_text:
+                    app.logger.warning(f"Empty strong tag text in {link}")
+                    return 0
+                    
+                # Extract just the numeric value
+                points_text = strong_text.replace(' points', '').strip()
+                if not points_text.isdigit():
+                    app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
+                    return 0
+                    
+                points = int(points_text)
+                return points
+            else:
+                app.logger.warning(f"No profile-league element found in {link}")
+                return 0
+                
+        except requests.Timeout:
+            retries += 1
+            app.logger.warning(f"Timeout fetching {link}, retry {retries}/{max_retries}")
+            if retries > max_retries:
+                app.logger.error(f"Max retries reached for {link}")
+                return 0
+                
+        except requests.RequestException as e:
+            retries += 1
+            app.logger.warning(f"Request error fetching {link}: {str(e)}, retry {retries}/{max_retries}")
+            if retries > max_retries:
+                app.logger.error(f"Max retries reached for {link}")
+                return 0
+                
+        except Exception as e:
+            app.logger.error(f"Error fetching points from {link}: {str(e)}")
             return 0
             
-        # Small random delay to avoid rate limiting (between 0.1 and 0.5 seconds)
-        time.sleep(0.1 + (0.4 * random.random()))
-        
-        # Make a GET request to the link
-        response = requests.get(link, timeout=10)  # Add timeout to prevent hanging
-        response.raise_for_status()  # Raise an exception for bad status codes
-
-        # Parse the page content
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Find the first element with class 'profile-league'
-        profile_league = soup.find(class_='profile-league')
-
-        if profile_league:
-            # Find the <strong> tag inside 'profile-league' and get its text
-            strong_text = profile_league.find('strong').get_text(strip=True)
-            # Extract just the numeric value
-            points = int(strong_text.replace(' points', '').strip())
-            return points
-        else:
-            return 0
-    except Exception as e:
-        app.logger.error(f"Error fetching points from {link}: {str(e)}")
-        return 0
+    # If we get here after all retries, return 0
+    return 0
 
 # Fetch points with concurrency for better performance
 def fetch_points_concurrently(participants):
@@ -179,6 +225,9 @@ def fetch_points_concurrently(participants):
         # Create a new application context for this thread
         with app.app_context():
             try:
+                # Add some additional delay between requests to avoid rate limiting
+                time.sleep(0.2 + (0.3 * random.random()))  # 0.2-0.5 seconds between requests
+                
                 points = get_points(participant_info['profile_url'])
                 processed += 1
                 if processed % 5 == 0 or processed == total:  # Log every 5 participants or at the end
@@ -190,24 +239,34 @@ def fetch_points_concurrently(participants):
                 app.logger.error(error_msg)
                 return participant_info['id'], 0, error_msg
     
-    # Use ThreadPoolExecutor to perform requests concurrently
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_participant = {
-            executor.submit(fetch_participant_points, p_info): p_info 
-            for p_info in participant_data
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_participant):
-            try:
-                participant_id, points, error = future.result()
-                results[participant_id] = points
-                if error:
-                    errors.append(error)
-            except Exception as e:
-                participant_info = future_to_participant[future]
-                # Don't try to access participant attributes here as it might cause the same error
-                app.logger.error(f"Unexpected error in thread execution: {str(e)}")
-                errors.append(f"Failed to process a participant: {str(e)}")
+    # Use ThreadPoolExecutor with fewer workers to avoid overwhelming the system
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to 5
+        try:
+            future_to_participant = {
+                executor.submit(fetch_participant_points, p_info): p_info 
+                for p_info in participant_data
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_participant):
+                try:
+                    participant_id, points, error = future.result(timeout=30)  # Add timeout for each future
+                    results[participant_id] = points
+                    if error:
+                        errors.append(error)
+                except concurrent.futures.TimeoutError:
+                    participant_info = future_to_participant[future]
+                    app.logger.error(f"Timeout while processing {participant_info['name']}")
+                    results[participant_info['id']] = 0  # Default to 0 points on timeout
+                    errors.append(f"Timeout while processing {participant_info['name']}")
+                except Exception as e:
+                    participant_info = future_to_participant[future]
+                    # Don't try to access participant attributes here as it might cause the same error
+                    app.logger.error(f"Unexpected error in thread execution: {str(e)}")
+                    errors.append(f"Failed to process a participant: {str(e)}")
+                    # Still add the participant to results with 0 points
+                    results[participant_info['id']] = 0
+        except Exception as e:
+            app.logger.error(f"Error in concurrent execution: {str(e)}")
     
     # If there were many errors, show a summary message
     if len(errors) > 0:
@@ -422,14 +481,22 @@ def upload_file():
     
     # Fetch points concurrently for better performance
     # Limit batch size to avoid timeout
-    MAX_BATCH_SIZE = 25  # Process at most 25 participants at once
+    MAX_BATCH_SIZE = 10  # Process at most 10 participants at once (reduced from 25)
     all_results = {}
     
     for i in range(0, len(participants_to_fetch), MAX_BATCH_SIZE):
         batch = participants_to_fetch[i:i+MAX_BATCH_SIZE]
-        flash(f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1}...', 'info')
+        batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
+        app.logger.info(batch_msg)
+        flash(batch_msg, 'info')
+        
+        # Process each batch with a smaller number of concurrent workers
         batch_results = fetch_points_concurrently(batch)
         all_results.update(batch_results)
+        
+        # Commit after each batch to save progress
+        db.session.commit()
+        app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
     
     # Process the results - use a fresh query to avoid stale data
     results = []
@@ -577,14 +644,22 @@ def refresh_points():
     
     # Fetch points concurrently
     # Limit batch size to avoid timeout
-    MAX_BATCH_SIZE = 25  # Process at most 25 participants at once
+    MAX_BATCH_SIZE = 10  # Process at most 10 participants at once (reduced from 25)
     all_results = {}
     
     for i in range(0, len(participants), MAX_BATCH_SIZE):
         batch = participants[i:i+MAX_BATCH_SIZE]
-        flash(f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants)-1)//MAX_BATCH_SIZE + 1}...', 'info')
+        batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
+        app.logger.info(batch_msg)
+        flash(batch_msg, 'info')
+        
+        # Process each batch with a smaller number of concurrent workers
         batch_results = fetch_points_concurrently(batch)
         all_results.update(batch_results)
+        
+        # Commit after each batch to save progress
+        db.session.commit()
+        app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
     
     # Process results - use fresh queries to avoid stale data
     results = []
@@ -811,6 +886,28 @@ def admin_all_participants():
     ).join(User).all()
     
     return render_template('admin/all_participants.html', participants=participants)
+
+@app.route('/admin/participant/<int:participant_id>')
+@login_required
+def admin_participant_detail(participant_id):
+    # Check if the current user is admin
+    if g.user.id != 1:
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
+    
+    # Get the participant details
+    participant = Participant.query.get_or_404(participant_id)
+    
+    # Get the participant's history
+    history = PointsHistory.query.filter_by(participant_id=participant_id).order_by(PointsHistory.date_recorded.desc()).all()
+    
+    # Get the owner (user) information
+    owner = User.query.get(participant.user_id)
+    
+    return render_template('admin/participant_detail.html', 
+                          participant=participant, 
+                          history=history,
+                          owner=owner)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080) 
