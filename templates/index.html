@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}GDG Points Tracker - Home{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        {% if g.user %}
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0">Upload CSV File</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Track weekly and lifelong points for Google Developer Groups community program participants.
+                </p>
+                <p>
+                    Upload a CSV file with participant names and profile URLs to track their points.
+                </p>
+
+                <div class="d-flex mb-3">
+                    <a href="{{ url_for('view_participants') }}" class="btn btn-outline-primary me-2">
+                        <i class="bi bi-people"></i> View Participants
+                    </a>
+                    <a href="{{ url_for('refresh_points') }}" class="btn btn-success">
+                        <i class="bi bi-arrow-clockwise"></i> Refresh All Points
+                    </a>
+                </div>
+
+                <div class="alert alert-info">
+                    <h5>CSV Requirements:</h5>
+                    <ul>
+                        <li>Must contain a <strong>Name</strong> column with participant names</li>
+                        <li>Must contain a <strong>profile</strong> column with Google Cloud Skills Boost profile URLs</li>
+                        <li>Optional <strong>mail</strong> column for participant email addresses</li>
+                    </ul>
+                    <p class="mt-2">
+                        <a href="{{ url_for('download_example') }}" class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-download"></i> Download Example CSV
+                        </a>
+                    </p>
+                </div>
+
+                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="mt-4">
+                    <div class="mb-3">
+                        <label for="csv_file" class="form-label">Select CSV File</label>
+                        <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+                    </div>
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Upload and Process</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h2 class="mb-0">Welcome to GDG Points Tracker</h2>
+            </div>
+            <div class="card-body">
+                <p class="lead">
+                    Track weekly and lifelong points for Google Developer Groups community program participants.
+                </p>
+                <p>
+                    Please log in or register to start tracking your participants' points.
+                </p>
+                <div class="d-flex justify-content-center mt-4">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary me-3">
+                        <i class="bi bi-box-arrow-in-right"></i> Login
+                    </a>
+                    <a href="{{ url_for('register') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-person-plus"></i> Register
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card mt-4 shadow">
+            <div class="card-header bg-secondary text-white">
+                <h3 class="mb-0">How It Works</h3>
+            </div>
+            <div class="card-body">
+                <ol>
+                    <li class="mb-2"><strong>Upload CSV File</strong> - containing participant data</li>
+                    <li class="mb-2"><strong>Automatic Points Scraping</strong> - retrieves current points from participant profiles</li>
+                    <li class="mb-2"><strong>Weekly Points Calculation</strong> - compares with previous week's points</li>
+                    <li class="mb-2"><strong>Results Display</strong> - shows weekly and lifelong points for each participant</li>
+                    <li class="mb-2"><strong>Data Storage</strong> - stores historical data for future tracking</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

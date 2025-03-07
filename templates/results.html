@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block title %}GDG Points Tracker - Results{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1>Points Tracking Results</h1>
+        
+        <div class="alert alert-success mb-4">
+            <h4 class="alert-heading"><i class="bi bi-check-circle"></i> Processing Complete!</h4>
+            <p class="lead mb-0">The data has been processed successfully. Here are the current points for your participants:</p>
+        </div>
+        
+        <div class="d-flex justify-content-between mb-3">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Upload Another CSV
+            </a>
+            <a href="{{ url_for('view_participants') }}" class="btn btn-outline-secondary">
+                View All Participants
+            </a>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>#</th>
+                        <th>Name</th>
+                        <th>Weekly Points</th>
+                        <th>Current Points</th>
+                        {% if results[0].profile_url is defined %}
+                        <th>Profile</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for result in results %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ result.name }}</td>
+                        <td>
+                            {% if result.weekly_points is string %}
+                                <span class="badge bg-info">{{ result.weekly_points }}</span>
+                            {% elif result.weekly_points > 0 %}
+                                <span class="badge bg-success">+{{ result.weekly_points }}</span>
+                            {% elif result.weekly_points < 0 %}
+                                <span class="badge bg-danger">{{ result.weekly_points }}</span>
+                            {% else %}
+                                <span class="badge bg-secondary">{{ result.weekly_points }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ result.current_points if result.current_points is defined else result.lifelong_points }}</td>
+                        {% if result.profile_url is defined %}
+                        <td>
+                            <a href="{{ result.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                View Profile
+                            </a>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Summary Statistics -->
+        <div class="row mt-4">
+            <div class="col-md-4">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Total Participants</h5>
+                        <p class="card-text display-4">{{ results|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Points Status</h5>
+                        <p class="card-text">
+                            {% if results[0].weekly_points is string %}
+                                <span class="badge bg-info fs-6">Initial Upload</span>
+                                <p class="mt-2">Weekly points will be available after the next refresh (in 7 days)</p>
+                            {% else %}
+                                <span class="badge bg-success fs-6">Weekly Update</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Next Refresh</h5>
+                        <p class="card-text">Available in 7 days</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}GDG Points Tracker{% endblock %}</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .flash-messages {
+            margin-top: 20px;
+        }
+        .footer {
+            margin-top: 50px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+            text-align: center;
+        }
+        .main-content {
+            min-height: calc(100vh - 200px);
+            padding: 30px 0;
+        }
+        .gdg-color {
+            color: #4285F4;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('index') }}">
+                <span class="gdg-color">GDG</span> Points Tracker
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('index') }}">Home</a>
+                    </li>
+                    {% if g.user %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('view_participants') }}">Participants</a>
+                    </li>
+                    <li class="nav-item">
+                        <span class="nav-link text-muted">Welcome, {{ g.user.username }}</span>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+                    </li>
+                    {% else %}
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('register') }}">Register</a>
+                    </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Flash Messages -->
+    <div class="container flash-messages">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    <!-- Main Content -->
+    <div class="container main-content">
+        {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; {{ now.year if now else 2023 }} GDG Points Tracker | Powered by Flask</p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Custom JS for refresh timing -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if next-refresh element exists
+            const nextRefreshElement = document.getElementById('next-refresh');
+            const refreshButton = document.getElementById('refresh-btn');
+            const refreshSpinner = document.querySelector('#refresh-status .spinner-border');
+            
+            // Add loading state to the refresh button
+            if (refreshButton) {
+                refreshButton.addEventListener('click', function(e) {
+                    if (refreshButton.classList.contains('disabled')) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    
+                    refreshButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...';
+                    refreshButton.classList.add('disabled');
+                });
+            }
+            
+            if (nextRefreshElement) {
+                // Fetch next refresh time from server
+                fetch('/next_refresh')
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide spinner
+                        if (refreshSpinner) {
+                            refreshSpinner.style.display = 'none';
+                        }
+                        
+                        if (data.can_refresh) {
+                            nextRefreshElement.innerHTML = 'Available now';
+                            nextRefreshElement.className = 'text-success fw-bold';
+                            if (refreshButton) {
+                                refreshButton.classList.remove('disabled');
+                                refreshButton.setAttribute('title', 'Refresh points now');
+                            }
+                        } else {
+                            nextRefreshElement.innerHTML = data.time_remaining;
+                            nextRefreshElement.className = 'text-warning';
+                            if (refreshButton) {
+                                refreshButton.classList.add('disabled');
+                                refreshButton.setAttribute('title', 'Next refresh available in ' + data.time_remaining);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error fetching refresh time:', error);
+                        nextRefreshElement.innerHTML = 'Unknown';
+                        if (refreshSpinner) {
+                            refreshSpinner.style.display = 'none';
+                        }
+                    });
+            }
+            
+            // Also disable the main refresh button in the top bar if needed
+            const mainRefreshButton = document.getElementById('main-refresh-btn');
+            if (mainRefreshButton && refreshButton) {
+                // Add loading state to the main refresh button
+                mainRefreshButton.addEventListener('click', function(e) {
+                    if (mainRefreshButton.classList.contains('disabled')) {
+                        e.preventDefault();
+                        return false;
+                    }
+                    
+                    mainRefreshButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Refreshing...';
+                    mainRefreshButton.classList.add('disabled');
+                });
+                
+                // Monitor the state of the refresh button in the card
+                const observer = new MutationObserver(function(mutations) {
+                    mutations.forEach(function(mutation) {
+                        if (mutation.attributeName === 'class') {
+                            if (refreshButton.classList.contains('disabled')) {
+                                mainRefreshButton.classList.add('disabled');
+                                mainRefreshButton.setAttribute('title', refreshButton.getAttribute('title'));
+                            } else {
+                                mainRefreshButton.classList.remove('disabled');
+                                mainRefreshButton.setAttribute('title', 'Refresh all points');
+                            }
+                        }
+                    });
+                });
+                
+                observer.observe(refreshButton, { attributes: true });
+            }
+        });
+    </script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

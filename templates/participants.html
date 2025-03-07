@@ -1,0 +1,211 @@
+{% extends 'base.html' %}
+
+{% block title %}GDG Points Tracker - All Participants{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1>Participants and Points</h1>
+        <p class="lead">Showing all participants and their points information.</p>
+        
+        <div class="d-flex justify-content-between mb-3">
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Back to Home
+            </a>
+            <a href="{{ url_for('refresh_points') }}" class="btn btn-success" id="main-refresh-btn">
+                <i class="bi bi-arrow-clockwise"></i> Refresh All Points
+            </a>
+        </div>
+
+        <!-- Summary Stats Cards -->
+        {% if participants %}
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Total Participants</h5>
+                        <p class="card-text display-4">{{ participants|length }}</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Latest Update</h5>
+                        <p class="card-text h5">
+                            {% if participants %}
+                                {{ participants|sort(attribute='last_updated', reverse=True)|first|attr('last_updated')|strftime('%d %b %Y') }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Total Points</h5>
+                        <p class="card-text display-4">
+                            {{ participants|sum(attribute='current_points') }}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-light mb-3">
+                    <div class="card-body text-center">
+                        <h5 class="card-title">Next Refresh Available</h5>
+                        <p class="card-text h5">
+                            <div id="refresh-status">
+                                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <span id="next-refresh">Checking...</span>
+                            </div>
+                        </p>
+                        <div class="mt-2">
+                            <a href="{{ url_for('refresh_points') }}" class="btn btn-sm btn-success disabled" id="refresh-btn">
+                                <i class="bi bi-arrow-clockwise"></i> Refresh Now
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- Current Points Table -->
+        {% if participants %}
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">Participants Points (As of {{ now.strftime('%d %b %Y') }})</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Name</th>
+                                    <th>Current Points</th>
+                                    <th>Last Change</th>
+                                    <th>Last Updated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for participant in participants|sort(attribute='current_points', reverse=True) %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ participant.name }}</td>
+                                    <td>{{ participant.current_points }}</td>
+                                    <td>
+                                        {% if participant.history|length > 1 %}
+                                            {% set history_sorted = participant.history|sort(attribute='date_recorded', reverse=True) %}
+                                            {% set latest = history_sorted[0] %}
+                                            {% if history_sorted|length > 1 %}
+                                                {% set previous = history_sorted[1] %}
+                                                {% set change = latest.points - previous.points %}
+                                                {% if change > 0 %}
+                                                    <span class="badge bg-success">+{{ change }}</span>
+                                                {% elif change < 0 %}
+                                                    <span class="badge bg-danger">{{ change }}</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary">0</span>
+                                                {% endif %}
+                                            {% else %}
+                                                <span class="badge bg-secondary">New</span>
+                                            {% endif %}
+                                        {% else %}
+                                            <span class="badge bg-secondary">New</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ participant.last_updated.strftime('%d %b %Y, %H:%M') }}</td>
+                                    <td>
+                                        <div class="btn-group" role="group">
+                                            <a href="{{ url_for('participant_history', id=participant.id) }}" class="btn btn-sm btn-outline-info">
+                                                <i class="bi bi-clock-history"></i> History
+                                            </a>
+                                            <a href="{{ participant.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-box-arrow-up-right"></i> Profile
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Weekly Changes Section -->
+            <div class="card">
+                <div class="card-header bg-success text-white">
+                    <h3 class="mb-0">Weekly Progress ({{ (now - timedelta(days=7)).strftime('%d %b') }} - {{ now.strftime('%d %b %Y') }})</h3>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Name</th>
+                                    <th>Weekly Points</th>
+                                    <th>Total Points</th>
+                                    <th>Profile</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% set weekly_participants = [] %}
+                                {% for participant in participants %}
+                                    {% if participant.history|length > 1 %}
+                                        {% set history_sorted = participant.history|sort(attribute='date_recorded', reverse=True) %}
+                                        {% set latest = history_sorted[0] %}
+                                        {% if history_sorted|length > 1 %}
+                                            {% set previous = history_sorted[1] %}
+                                            {% set weekly_points = latest.points - previous.points %}
+                                            {% set participant_with_points = {'participant': participant, 'weekly_points': weekly_points} %}
+                                            {% set _ = weekly_participants.append(participant_with_points) %}
+                                        {% endif %}
+                                    {% endif %}
+                                {% endfor %}
+                                
+                                {% for item in weekly_participants|sort(attribute='weekly_points', reverse=True) %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td>{{ item.participant.name }}</td>
+                                        <td>
+                                            {% if item.weekly_points > 0 %}
+                                                <span class="badge bg-success">+{{ item.weekly_points }}</span>
+                                            {% elif item.weekly_points < 0 %}
+                                                <span class="badge bg-danger">{{ item.weekly_points }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">0</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ item.participant.current_points }}</td>
+                                        <td>
+                                            <a href="{{ item.participant.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                                <i class="bi bi-box-arrow-up-right"></i> View Profile
+                                            </a>
+                                        </td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="alert alert-info">
+                <h4 class="alert-heading">No participants found!</h4>
+                <p>It looks like you haven't uploaded any CSV files yet. Please upload a file with participant data to get started.</p>
+                <hr>
+                <a href="{{ url_for('index') }}" class="btn btn-primary">Upload CSV File</a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %} 
