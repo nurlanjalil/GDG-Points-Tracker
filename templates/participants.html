@@ -88,6 +88,7 @@
                                 <tr>
                                     <th>Rank</th>
                                     <th>Name</th>
+                                    <th>Email</th>
                                     <th>Previous Points</th>
                                     <th>Current Points</th>
                                     <th>Weekly Change</th>
@@ -101,6 +102,7 @@
                                 <tr>
                                     <td>{{ loop.index }}</td>
                                     <td>{{ p.name }}</td>
+                                    <td>{{ p.email or 'Not provided' }}</td>
                                     <td>{{ p.previous_points }}</td>
                                     <td>{{ p.current_points }}</td>
                                     <td>

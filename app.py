@@ -33,7 +33,12 @@ if database_url.startswith("postgres://"):
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {'check_same_thread': False} if database_url.startswith('sqlite:') else {}
+    'connect_args': {'check_same_thread': False} if database_url.startswith('sqlite:') else {},
+    'pool_pre_ping': True,  # Check connection validity before usage
+    'pool_recycle': 300,    # Recycle connections after 5 minutes
+    'pool_timeout': 30,     # Connection timeout after 30 seconds
+    'max_overflow': 10,     # Allow up to 10 connections beyond pool_size
+    'pool_size': 5          # Maintain a pool of 5 connections
 }
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
@@ -43,6 +48,21 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize database
 db = SQLAlchemy(app)
+
+# Configure database error handling
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Handle exceptions gracefully and log them"""
+    # Log the error
+    app.logger.error(f"Unhandled exception: {str(e)}")
+    
+    # Check if this is a database-related error
+    if 'SQLAlchemy' in str(type(e)):
+        app.logger.error(f"Database error: {str(e)}")
+        flash('A database error occurred. Please try again later.', 'error')
+    
+    # Return a friendly error page
+    return render_template('error.html', error=str(e)), 500
 
 # Create tables automatically
 with app.app_context():
@@ -710,10 +730,22 @@ def refresh_points():
 @app.route('/participant/<int:id>')
 @login_required
 def participant_history(id):
-    # Get the participant and verify it belongs to the current user
-    participant = Participant.query.filter_by(id=id, user_id=g.user.id).first_or_404()
-    history = PointsHistory.query.filter_by(participant_id=id).order_by(PointsHistory.date_recorded.desc()).all()
-    return render_template('history.html', participant=participant, history=history)
+    try:
+        # Get the participant and verify it belongs to the current user
+        participant = Participant.query.filter_by(id=id, user_id=g.user.id).first()
+        
+        if not participant:
+            flash('Participant not found or you do not have permission to view this participant.', 'error')
+            return redirect(url_for('view_participants'))
+        
+        # Get the history for this participant
+        history = PointsHistory.query.filter_by(participant_id=id).order_by(PointsHistory.date_recorded.desc()).all()
+        
+        return render_template('history.html', participant=participant, history=history)
+    except Exception as e:
+        app.logger.error(f"Error viewing participant history: {str(e)}")
+        flash('An error occurred while retrieving participant history. Please try again.', 'error')
+        return redirect(url_for('view_participants'))
 
 @app.route('/next_refresh')
 def next_refresh():
@@ -850,27 +882,28 @@ def admin_user_detail(user_id):
         flash('Admin access required', 'error')
         return redirect(url_for('index'))
     
+    # Get the user
     user = User.query.get_or_404(user_id)
-    participants = Participant.query.filter_by(user_id=user_id).all()
     
-    # Enrich participant data with history
-    enriched_participants = []
-    for participant in participants:
-        history_count = PointsHistory.query.filter_by(participant_id=participant.id).count()
-        latest_points = participant.current_points
+    # Get all participants for this user with history counts
+    participants_data = []
+    for p in user.participants:
+        # Count history entries
+        history_count = PointsHistory.query.filter_by(participant_id=p.id).count()
         
-        enriched_participants.append({
-            'id': participant.id,
-            'name': participant.name,
-            'profile_url': participant.profile_url,
-            'current_points': latest_points,
-            'history_count': history_count,
-            'last_updated': participant.last_updated
-        })
+        # Create a dictionary with all participant data including email
+        participant_dict = {
+            'id': p.id,
+            'name': p.name,
+            'email': p.email,  # Ensure email is included
+            'profile_url': p.profile_url,
+            'current_points': p.current_points,
+            'last_updated': p.last_updated,
+            'history_count': history_count
+        }
+        participants_data.append(participant_dict)
     
-    return render_template('admin/user_detail.html', 
-                           user=user, 
-                           participants=enriched_participants)
+    return render_template('admin/user_detail.html', user=user, participants=participants_data)
 
 @app.route('/admin/all-participants')
 @login_required
