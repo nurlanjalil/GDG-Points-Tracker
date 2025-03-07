@@ -1,0 +1,106 @@
+{% extends 'base.html' %}
+
+{% block title %}GDG Points Tracker - Admin Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="d-flex align-items-center justify-content-between mb-4">
+        <h1>Admin Dashboard</h1>
+        <div>
+            <a href="{{ url_for('index') }}" class="btn btn-outline-primary me-2">
+                <i class="bi bi-house"></i> Back to App
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats Overview -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card bg-primary text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Users</h5>
+                    <p class="display-4">{{ user_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-success text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Participants</h5>
+                    <p class="display-4">{{ participant_count }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card bg-info text-white">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Avg Participants/User</h5>
+                    <p class="display-4">
+                        {% if user_count > 0 %}
+                            {{ (participant_count / user_count) | round(1) }}
+                        {% else %}
+                            0
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Navigation -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="list-group">
+                <a href="{{ url_for('admin_dashboard') }}" class="list-group-item list-group-item-action active">
+                    <i class="bi bi-speedometer2"></i> Dashboard
+                </a>
+                <a href="{{ url_for('admin_users') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-people"></i> User Management
+                </a>
+                <a href="{{ url_for('admin_all_participants') }}" class="list-group-item list-group-item-action">
+                    <i class="bi bi-list-check"></i> All Participants
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- User Stats -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">User Summary</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Date Registered</th>
+                            <th>Participants</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for user in user_stats %}
+                            <tr>
+                                <td>{{ user.id }}</td>
+                                <td>{{ user.username }}</td>
+                                <td>{{ user.email or 'N/A' }}</td>
+                                <td>{{ user.date_registered|strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>{{ user.participant_count }}</td>
+                                <td>
+                                    <a href="{{ url_for('admin_user_detail', user_id=user.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <i class="bi bi-eye"></i> View
+                                    </a>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

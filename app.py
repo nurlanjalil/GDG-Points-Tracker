@@ -421,11 +421,19 @@ def upload_file():
     db.session.commit()
     
     # Fetch points concurrently for better performance
-    points_data = fetch_points_concurrently(participants_to_fetch)
+    # Limit batch size to avoid timeout
+    MAX_BATCH_SIZE = 25  # Process at most 25 participants at once
+    all_results = {}
+    
+    for i in range(0, len(participants_to_fetch), MAX_BATCH_SIZE):
+        batch = participants_to_fetch[i:i+MAX_BATCH_SIZE]
+        flash(f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1}...', 'info')
+        batch_results = fetch_points_concurrently(batch)
+        all_results.update(batch_results)
     
     # Process the results - use a fresh query to avoid stale data
     results = []
-    for participant_id, points in points_data.items():
+    for participant_id, points in all_results.items():
         # Get a fresh instance of the participant from the database
         participant = Participant.query.get(participant_id)
         if participant:
@@ -568,11 +576,19 @@ def refresh_points():
     start_time = time.time()
     
     # Fetch points concurrently
-    points_data = fetch_points_concurrently(participants)
+    # Limit batch size to avoid timeout
+    MAX_BATCH_SIZE = 25  # Process at most 25 participants at once
+    all_results = {}
+    
+    for i in range(0, len(participants), MAX_BATCH_SIZE):
+        batch = participants[i:i+MAX_BATCH_SIZE]
+        flash(f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants)-1)//MAX_BATCH_SIZE + 1}...', 'info')
+        batch_results = fetch_points_concurrently(batch)
+        all_results.update(batch_results)
     
     # Process results - use fresh queries to avoid stale data
     results = []
-    for participant_id, points in points_data.items():
+    for participant_id, points in all_results.items():
         # Get a fresh instance of the participant from the database
         participant = Participant.query.get(participant_id)
         if participant:
@@ -709,6 +725,92 @@ def setup_database(setup_key):
         return f"<h1>Database Setup</h1>{result}"
     except Exception as e:
         return f"<h1>Error</h1>Error creating database tables: {str(e)}", 500
+
+# Admin routes
+@app.route('/admin')
+@login_required
+def admin_dashboard():
+    # Check if the current user is admin (first user is considered admin for simplicity)
+    if g.user.id != 1:
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
+    
+    # Get statistics for the admin dashboard
+    user_count = User.query.count()
+    participant_count = Participant.query.count()
+    
+    # Get breakdown by user
+    user_stats = []
+    for user in User.query.all():
+        user_participants = Participant.query.filter_by(user_id=user.id).count()
+        user_stats.append({
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'date_registered': user.date_registered,
+            'participant_count': user_participants
+        })
+    
+    return render_template('admin/dashboard.html', 
+                           user_count=user_count, 
+                           participant_count=participant_count,
+                           user_stats=user_stats)
+
+@app.route('/admin/users')
+@login_required
+def admin_users():
+    # Check if the current user is admin 
+    if g.user.id != 1:
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
+    
+    users = User.query.all()
+    return render_template('admin/users.html', users=users)
+
+@app.route('/admin/user/<int:user_id>')
+@login_required
+def admin_user_detail(user_id):
+    # Check if the current user is admin
+    if g.user.id != 1:
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
+    
+    user = User.query.get_or_404(user_id)
+    participants = Participant.query.filter_by(user_id=user_id).all()
+    
+    # Enrich participant data with history
+    enriched_participants = []
+    for participant in participants:
+        history_count = PointsHistory.query.filter_by(participant_id=participant.id).count()
+        latest_points = participant.current_points
+        
+        enriched_participants.append({
+            'id': participant.id,
+            'name': participant.name,
+            'profile_url': participant.profile_url,
+            'current_points': latest_points,
+            'history_count': history_count,
+            'last_updated': participant.last_updated
+        })
+    
+    return render_template('admin/user_detail.html', 
+                           user=user, 
+                           participants=enriched_participants)
+
+@app.route('/admin/all-participants')
+@login_required
+def admin_all_participants():
+    # Check if the current user is admin
+    if g.user.id != 1:
+        flash('Admin access required', 'error')
+        return redirect(url_for('index'))
+    
+    # Get all participants with user info
+    participants = db.session.query(
+        Participant, User.username.label('owner_name')
+    ).join(User).all()
+    
+    return render_template('admin/all_participants.html', participants=participants)
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080) 
