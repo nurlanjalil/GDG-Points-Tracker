@@ -10,13 +10,6 @@ A simple Flask-based web application to track Google Developer Groups community 
 - **Copy Functionality**: Easily copy points data for use in other applications
 - **Simple Interface**: Clean Bootstrap interface with responsive design
 
-## Screenshots
-
-- Login/Registration screen
-- Participant points dashboard
-- CSV upload interface
-- Points history view
-
 ## Installation
 
 ### Prerequisites
@@ -77,16 +70,10 @@ The application uses BeautifulSoup to scrape points data from Google Cloud Skill
 
 ## Deployment
 
-### Render.com Deployment
+To deploy the application:
 
-1. Create a new Web Service on Render
-2. Connect your GitHub repository
-3. Use the following settings:
-   - Build Command: `pip install -r requirements.txt`
-   - Start Command: `gunicorn app:app`
-4. Add the following environment variables:
-   - `SECRET_KEY`: A strong random secret key
-   - `DATABASE_URL`: Your database URL (Render PostgreSQL or SQLite)
+1. Install the requirements: `pip install -r requirements.txt`
+2. Run the application: `python app.py` or `gunicorn app:app` for production
 
 ## License
 
