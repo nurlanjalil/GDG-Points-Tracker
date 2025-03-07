@@ -1,21 +1,29 @@
 import os
+import time
+import io
+import sqlite3
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-from flask import Flask, render_template, request, redirect, url_for, flash, send_from_directory, jsonify, session, g
-from flask_sqlalchemy import SQLAlchemy
-from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash, check_password_hash
+import re
 import csv
-import io
+import logging
 import concurrent.futures
-import time
 import random
+import json
 import shutil
 import glob
 import functools
 import threading
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta, timezone
+from dateutil.relativedelta import relativedelta
+from flask import (
+    Flask, render_template, request, redirect, url_for, 
+    flash, send_from_directory, jsonify, session, g, make_response
+)
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from flask_sqlalchemy import SQLAlchemy
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -43,11 +51,18 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
 
+# Add a dedicated folder for storing processed CSV files
+app.config['PROCESSED_FOLDER'] = os.environ.get('PROCESSED_FOLDER', 'processed_files')
+
 # Create uploads folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(app.config['PROCESSED_FOLDER'], exist_ok=True)
 
 # Initialize database
 db = SQLAlchemy(app)
+
+# Store processing state in memory
+processing_state = {}
 
 # Configure database error handling
 @app.errorhandler(Exception)
@@ -505,9 +520,10 @@ def download_example():
         as_attachment=True
     )
 
-@app.route('/upload', methods=['POST'])
+@app.route('/upload_csv', methods=['POST'])
 @login_required
-def upload_file():
+def upload_csv():
+    """Handle the initial CSV upload and redirect to the processing page"""
     # Check if file is in the request
     if 'csv_file' not in request.files:
         flash('No file part', 'error')
@@ -526,36 +542,116 @@ def upload_file():
         return redirect(url_for('index'))
     
     try:
-        # Validate CSV structure
-        file_stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
+        # Generate a unique filename to prevent collisions
+        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
+        filename = f"{g.user.id}_{timestamp}_{secure_filename(file.filename)}"
+        file_path = os.path.join(app.config['PROCESSED_FOLDER'], filename)
+        
+        # Save the file
+        file.save(file_path)
+        
+        # Create processing state entry
+        file_id = f"{timestamp}_{g.user.id}"
+        processing_state[file_id] = {
+            'file_path': file_path,
+            'user_id': g.user.id,
+            'status': 'pending',
+            'start_time': time.time(),
+            'participants': [],
+            'results': {},
+            'warnings': [],
+            'errors': [],
+            'batches': []
+        }
+        
+        # Redirect to processing page
+        return redirect(url_for('processing_page', file_id=file_id))
+        
+    except Exception as e:
+        app.logger.error(f"Error during CSV upload: {str(e)}")
+        flash(f'Error uploading CSV file: {str(e)}', 'error')
+        return redirect(url_for('index'))
+
+@app.route('/processing/<file_id>')
+@login_required
+def processing_page(file_id):
+    """Render the processing page for the given file ID"""
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        flash('Invalid or expired file ID', 'error')
+        return redirect(url_for('index'))
+    
+    # Render the processing template
+    return render_template('processing.html', file_id=file_id)
+
+@app.route('/api/validate_csv/<file_id>')
+@login_required
+def api_validate_csv(file_id):
+    """API endpoint to validate the CSV file"""
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        return jsonify({'success': False, 'message': 'Invalid or expired file ID'})
+    
+    state = processing_state[file_id]
+    file_path = state['file_path']
+    
+    try:
+        # Read the CSV file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Validate the CSV structure
+        file_stream = io.StringIO(content, newline=None)
         is_valid, message = validate_csv(file_stream)
         
         if not is_valid:
-            flash(message, 'error')
-            return redirect(url_for('index'))
+            state['status'] = 'error'
+            state['errors'].append(message)
+            return jsonify({'success': False, 'message': message})
         
-        # Process CSV data
-        file_stream.seek(0)
+        # Update state
+        state['status'] = 'validated'
+        
+        # Return success response
+        return jsonify({
+            'success': True, 
+            'message': 'CSV file validated successfully'
+        })
+        
+    except Exception as e:
+        error_message = f"Error validating CSV: {str(e)}"
+        state['status'] = 'error'
+        state['errors'].append(error_message)
+        app.logger.error(error_message)
+        return jsonify({'success': False, 'message': error_message})
+
+@app.route('/api/parse_participants/<file_id>')
+@login_required
+def api_parse_participants(file_id):
+    """API endpoint to parse participants from the CSV file"""
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        return jsonify({'success': False, 'message': 'Invalid or expired file ID'})
+    
+    state = processing_state[file_id]
+    file_path = state['file_path']
+    
+    try:
+        # Read the CSV file
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Parse the CSV data
+        file_stream = io.StringIO(content, newline=None)
         df = pd.read_csv(file_stream)
-        
-        # Check if the CSV is too large
-        if len(df) > 100:
-            flash(f'CSV contains {len(df)} participants. Processing may take a while or time out. Consider uploading smaller batches.', 'warning')
-        
-        # Start timing for performance metrics
-        start_time = time.time()
-        flash('Processing CSV file. This may take a moment...', 'info')
         
         # Create a backup before making changes
         backup_path = backup_database()
         if backup_path:
             app.logger.info(f"Database backup created at {backup_path}")
         
-        # List to store results for display
-        results = []
-        
-        # First collect all participant data
-        participants_to_fetch = []
+        # Process each participant
+        participants = []
         
         for index, row in df.iterrows():
             try:
@@ -566,7 +662,9 @@ def upload_file():
                 # Handle missing profile URLs by setting a default value
                 if pd.isna(profile_url) or str(profile_url).strip() == '':
                     profile_url = f"INVALID_PROFILE_URL_{name.replace(' ', '_')}"
-                    app.logger.info(f"Using placeholder URL for {name} at row {index+2}")
+                    warning = f"Using placeholder URL for {name} at row {index+2}"
+                    state['warnings'].append(warning)
+                    app.logger.info(warning)
                 else:
                     # Ensure profile_url is a string (not a float NaN)
                     profile_url = str(profile_url).strip()
@@ -592,57 +690,163 @@ def upload_file():
                 if email and participant.email != email:
                     participant.email = email
                 
-                participants_to_fetch.append(participant)
+                # Add participant to the list
+                participants.append({
+                    'id': participant.id,
+                    'name': participant.name,
+                    'profile_url': participant.profile_url,
+                    'email': participant.email
+                })
                 
                 # Commit every 10 participants to ensure data is saved
-                if len(participants_to_fetch) % 10 == 0:
+                if len(participants) % 10 == 0:
                     db.session.commit()
-                    flash(f'Added/updated {len(participants_to_fetch)} participants. Processing...', 'info')
                 
             except Exception as e:
-                app.logger.error(f"Error processing row {index+2}: {str(e)}")
-                flash(f'Error processing participant at row {index+2}: {str(e)}', 'error')
+                error_message = f"Error processing row {index+2}: {str(e)}"
+                state['errors'].append(error_message)
+                app.logger.error(error_message)
         
-        # Commit all changes to the database before starting concurrent operations
+        # Commit all changes to the database
         db.session.commit()
         
-        # Fetch points concurrently for better performance
-        # Limit batch size to avoid timeout
-        MAX_BATCH_SIZE = 5  # Process at most 5 participants at once (reduced from 10)
-        all_results = {}
+        # Define batch size
+        MAX_BATCH_SIZE = 5
         
-        for i in range(0, len(participants_to_fetch), MAX_BATCH_SIZE):
-            batch = participants_to_fetch[i:i+MAX_BATCH_SIZE]
-            batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
-            app.logger.info(batch_msg)
-            flash(batch_msg, 'info')
+        # Split participants into batches
+        batches = []
+        for i in range(0, len(participants), MAX_BATCH_SIZE):
+            batch = participants[i:i+MAX_BATCH_SIZE]
+            batches.append({
+                'participants': batch,
+                'status': 'pending',
+                'results': {}
+            })
+        
+        # Update state
+        state['participants'] = participants
+        state['batches'] = batches
+        state['status'] = 'parsed'
+        
+        # Return success response
+        return jsonify({
+            'success': True, 
+            'count': len(participants),
+            'batches': len(batches)
+        })
+        
+    except Exception as e:
+        error_message = f"Error parsing participants: {str(e)}"
+        state['status'] = 'error'
+        state['errors'].append(error_message)
+        app.logger.error(error_message)
+        
+        # Roll back any failed transactions
+        db.session.rollback()
+        
+        return jsonify({'success': False, 'message': error_message})
+
+@app.route('/api/scrape_batch/<file_id>/<int:batch_num>')
+@login_required
+def api_scrape_batch(file_id, batch_num):
+    """API endpoint to scrape points for a batch of participants"""
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        return jsonify({'success': False, 'message': 'Invalid or expired file ID'})
+    
+    state = processing_state[file_id]
+    
+    # Check if the batch number is valid
+    if batch_num < 1 or batch_num > len(state['batches']):
+        return jsonify({'success': False, 'message': 'Invalid batch number'})
+    
+    # Get the batch
+    batch = state['batches'][batch_num-1]
+    participants = batch['participants']
+    
+    try:
+        # Process the batch
+        batch_results = {}
+        warnings = []
+        
+        for participant_info in participants:
+            participant_id = participant_info['id']
+            participant = Participant.query.get(participant_id)
             
-            try:
-                # Process each batch with a smaller number of concurrent workers
-                batch_results = fetch_points_concurrently(batch)
-                all_results.update(batch_results)
-                
-                # Commit after each batch to save progress
-                db.session.commit()
-                app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
-                
-                # Short pause between batches
-                time.sleep(0.5)
-            except Exception as e:
-                app.logger.error(f"Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}")
-                flash(f'Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}. Some points may not be updated.', 'warning')
-                # Continue to the next batch
-                continue
-                
-        # Process the results - use a fresh query to avoid stale data
-        results = []
-        for participant_id, points in all_results.items():
+            if participant:
+                try:
+                    # Scrape points
+                    points = get_points(participant.profile_url)
+                    
+                    # Store the result
+                    batch_results[participant_id] = points
+                    
+                    # Log warning if points are too low
+                    if points <= 1:
+                        warning = f"Low points ({points}) for {participant.name}, profile may not be accessible"
+                        warnings.append(warning)
+                        app.logger.warning(warning)
+                    
+                except Exception as e:
+                    error_message = f"Error scraping points for {participant.name}: {str(e)}"
+                    warnings.append(error_message)
+                    app.logger.error(error_message)
+                    
+                    # Set default points
+                    batch_results[participant_id] = 1
+        
+        # Update batch status
+        batch['status'] = 'completed'
+        batch['results'] = batch_results
+        
+        # Update state with new results
+        state['results'].update(batch_results)
+        
+        if warnings:
+            state['warnings'].extend(warnings)
+        
+        # Return success response
+        return jsonify({
+            'success': True, 
+            'processed': len(batch_results),
+            'warnings': warnings
+        })
+        
+    except Exception as e:
+        error_message = f"Error processing batch {batch_num}: {str(e)}"
+        state['errors'].append(error_message)
+        app.logger.error(error_message)
+        
+        # Mark batch as failed but allow continuing
+        batch['status'] = 'failed'
+        
+        return jsonify({
+            'success': False, 
+            'message': error_message,
+            'canContinue': True  # Allow continuing to next batch
+        })
+
+@app.route('/api/finalize_results/<file_id>')
+@login_required
+def api_finalize_results(file_id):
+    """API endpoint to finalize results and update the database"""
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        return jsonify({'success': False, 'message': 'Invalid or expired file ID'})
+    
+    state = processing_state[file_id]
+    results = state['results']
+    
+    try:
+        # Process the results
+        processed_results = []
+        
+        for participant_id, points in results.items():
             # Get a fresh instance of the participant from the database
             participant = Participant.query.get(participant_id)
             if participant:
                 try:
-                    # For initial upload, just set the current points without calculating weekly points
-                    # Weekly points will be calculated on refresh after a week
+                    # For initial upload, just set the current points
                     participant.current_points = points
                     participant.last_updated = datetime.utcnow()
                     
@@ -654,46 +858,73 @@ def upload_file():
                     db.session.add(history_entry)
                     
                     # Add to results for display
-                    results.append({
+                    processed_results.append({
                         'name': participant.name,
                         'current_points': points,
-                        'weekly_points': 'N/A (First upload)'  # Indicate this is the first upload
+                        'weekly_points': 'N/A (First upload)',
+                        'profile_url': participant.profile_url,
+                        'status': 'success'
                     })
                 except Exception as e:
-                    app.logger.error(f"Error updating participant {participant.id}: {str(e)}")
+                    error_message = f"Error updating participant {participant.id}: {str(e)}"
+                    state['errors'].append(error_message)
+                    app.logger.error(error_message)
+                    
                     # Still add to results to show something to the user
-                    results.append({
+                    processed_results.append({
                         'name': participant.name,
                         'current_points': 'Error',
-                        'weekly_points': 'Error'
+                        'weekly_points': 'Error',
+                        'profile_url': participant.profile_url,
+                        'status': 'error'
                     })
         
         # Save all changes to the database
         db.session.commit()
         
-        # Record this as the first refresh
-        last_refresh = LastRefresh()
-        db.session.add(last_refresh)
-        db.session.commit()
+        # Record this as the first refresh if it doesn't exist
+        last_refresh = LastRefresh.query.first()
+        if not last_refresh:
+            last_refresh = LastRefresh()
+            db.session.add(last_refresh)
+            db.session.commit()
         
-        # Sort results by weekly points (highest first)
-        sorted_results = sorted(results, key=lambda x: x['current_points'] if isinstance(x['current_points'], int) else 0, reverse=True)
+        # Update state
+        state['status'] = 'completed'
+        state['end_time'] = time.time()
         
-        # Calculate and display performance metrics
-        end_time = time.time()
-        processing_time = end_time - start_time
-        flash(f'CSV file processed successfully in {processing_time:.2f} seconds! {len(results)} participants updated.', 'success')
+        # Sort results by points (highest first)
+        sorted_results = sorted(
+            processed_results, 
+            key=lambda x: x['current_points'] if isinstance(x['current_points'], int) else 0, 
+            reverse=True
+        )
         
-        return render_template('results.html', results=sorted_results)
+        # Calculate statistics
+        processing_time = state['end_time'] - state['start_time']
+        success_count = sum(1 for result in processed_results if result['status'] == 'success')
+        success_rate = int((success_count / len(processed_results)) * 100) if processed_results else 0
+        
+        # Return success response
+        return jsonify({
+            'success': True,
+            'results': sorted_results,
+            'stats': {
+                'totalParticipants': len(processed_results),
+                'successRate': success_rate,
+                'processingTime': round(processing_time, 1)
+            }
+        })
         
     except Exception as e:
-        app.logger.error(f"Error during CSV upload: {str(e)}")
-        db.session.rollback()  # Roll back any failed transactions
+        error_message = f"Error finalizing results: {str(e)}"
+        state['errors'].append(error_message)
+        app.logger.error(error_message)
         
-        flash(f'Error processing CSV file: {str(e)}', 'error')
-        flash('Your participants have been added to the database, but their points may not be updated. You can try refreshing points later.', 'warning')
+        # Roll back any failed transactions
+        db.session.rollback()
         
-        return redirect(url_for('view_participants'))
+        return jsonify({'success': False, 'message': error_message})
 
 @app.route('/participants')
 @login_required

@@ -56,7 +56,7 @@
                     </ul>
                 </div>
 
-                <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="mt-4">
+                <form action="{{ url_for('upload_csv') }}" method="post" enctype="multipart/form-data" class="mt-4">
                     <div class="mb-3">
                         <label for="csv_file" class="form-label">Select CSV File</label>
                         <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
@@ -64,6 +64,9 @@
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary btn-lg">Upload and Process</button>
                     </div>
+                    <small class="form-text text-muted mt-2">
+                        <i class="bi bi-info-circle"></i> The file will be processed step-by-step with visual feedback.
+                    </small>
                 </form>
             </div>
         </div>
