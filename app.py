@@ -288,4 +288,7 @@ def upload():
         return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True) 
+    # Get port from environment variable (Render.com sets this)
+    port = int(os.environ.get('PORT', 5000))
+    # Bind to 0.0.0.0 to listen on all interfaces
+    app.run(host='0.0.0.0', port=port, debug=False) 
