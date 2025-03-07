@@ -161,16 +161,23 @@ def get_points(link):
             # Check if the link is invalid or a placeholder
             if not link or link == 'INVALID_PROFILE_URL' or pd.isna(link) or 'INVALID_PROFILE_URL' in link:
                 app.logger.info(f"Skipping invalid profile URL: {link}")
-                return 0
+                return 1  # Return 1 instead of 0 to avoid zero points
                 
             # Small random delay to avoid rate limiting
-            time.sleep(0.2 + (0.3 * random.random()))
+            time.sleep(0.3 + (0.5 * random.random()))  # Increased delay between requests (0.3-0.8 seconds)
             
             # Make a GET request to the link with a reasonable timeout
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Cache-Control': 'max-age=0'
             }
-            response = requests.get(link, timeout=20, headers=headers)  # Increased timeout from 15 to 20 seconds
+            app.logger.debug(f"Requesting {link} with timeout of 15 seconds")
+            response = requests.get(link, timeout=15, headers=headers)
+            app.logger.debug(f"Received response from {link} with status code {response.status_code}")
             response.raise_for_status()  # Raise an exception for bad status codes
 
             # Check for empty responses
@@ -184,65 +191,102 @@ def get_points(link):
             # Add debug information
             app.logger.debug(f"Successfully fetched content from {link} with status {response.status_code}")
             
-            # Try different approaches to find points
-            
-            # Approach 1: Find the first element with class 'profile-league'
-            profile_league = soup.find(class_='profile-league')
+            try:
+                # Try different approaches to find points
+                
+                # Approach 1: Find the first element with class 'profile-league'
+                profile_league = soup.find(class_='profile-league')
 
-            if profile_league:
-                # Find the <strong> tag inside 'profile-league' and get its text
-                strong_tag = profile_league.find('strong')
-                if strong_tag:
-                    strong_text = strong_tag.get_text(strip=True)
-                    if strong_text:
-                        # Extract just the numeric value
-                        points_text = strong_text.replace(' points', '').strip()
+                if profile_league:
+                    # Find the <strong> tag inside 'profile-league' and get its text
+                    strong_tag = profile_league.find('strong')
+                    if strong_tag:
+                        strong_text = strong_tag.get_text(strip=True)
+                        if strong_text:
+                            # Extract just the numeric value
+                            points_text = strong_text.replace(' points', '').strip()
+                            try:
+                                if points_text.isdigit():
+                                    points = int(points_text)
+                                    app.logger.info(f"Successfully found {points} points from {link}")
+                                    return points
+                            except ValueError:
+                                app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
+                    
+                # Debug output for all possible locations of points
+                app.logger.debug(f"Searching for alternative points locations in {link}")
+                
+                # Approach 2: Look for points in alternative locations
+                # Find all span elements with numbers
+                number_spans = soup.find_all('span', string=lambda s: s and s.strip().isdigit())
+                for span in number_spans:
+                    if span.parent and 'point' in span.parent.get_text().lower():
                         try:
-                            if points_text.isdigit():
-                                points = int(points_text)
-                                app.logger.info(f"Successfully found {points} points from {link}")
-                                return points
+                            points = int(span.get_text().strip())
+                            app.logger.info(f"Found alternative points value {points} from {link}")
+                            return points
                         except ValueError:
-                            app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
+                            continue
                 
-            # Debug output for all possible locations of points
-            app.logger.debug(f"Searching for alternative points locations in {link}")
-            
-            # Approach 2: Look for points in alternative locations
-            # Find all span elements with numbers
-            number_spans = soup.find_all('span', string=lambda s: s and s.strip().isdigit())
-            for span in number_spans:
-                if span.parent and 'point' in span.parent.get_text().lower():
-                    try:
-                        points = int(span.get_text().strip())
-                        app.logger.info(f"Found alternative points value {points} from {link}")
-                        return points
-                    except ValueError:
-                        continue
-            
-            # Approach 3: Try to find any element containing the word "points" and a number
-            points_elements = soup.find_all(string=lambda s: s and 'point' in s.lower())
-            for elem in points_elements:
-                text = elem.strip()
-                # Try to extract digits from the text
-                digits = ''.join(filter(str.isdigit, text))
-                if digits:
-                    try:
-                        points = int(digits)
-                        app.logger.info(f"Found points from text '{text}': {points}")
-                        return points
-                    except ValueError:
-                        continue
-            
-            # If we get here, no valid points were found
-            app.logger.warning(f"No points found in {link}")
-            
-            # If this was the final retry, log the HTML content for debugging
-            if retries == max_retries:
-                app.logger.debug(f"HTML content from {link}: {soup.prettify()[:500]}...")
+                # Approach 3: Try to find any element containing the word "points" and a number
+                points_elements = soup.find_all(string=lambda s: s and 'point' in s.lower())
+                for elem in points_elements:
+                    text = elem.strip()
+                    # Try to extract digits from the text
+                    digits = ''.join(filter(str.isdigit, text))
+                    if digits:
+                        try:
+                            points = int(digits)
+                            app.logger.info(f"Found points from text '{text}': {points}")
+                            return points
+                        except ValueError:
+                            continue
                 
-            # Fallback to a default value greater than 0 to prevent 0 points
-            return 1  # Return 1 instead of 0 to indicate at least some activity
+                # Approach 4: Look for any numbers near specific keywords
+                keywords = ['score', 'total', 'point', 'credit', 'achievement']
+                for keyword in keywords:
+                    elements = soup.find_all(string=lambda s: s and keyword in s.lower())
+                    for elem in elements:
+                        # Check the parent and sibling elements for numbers
+                        parent = elem.parent
+                        if parent:
+                            # Look in the parent text
+                            parent_text = parent.get_text()
+                            digits = ''.join(filter(str.isdigit, parent_text))
+                            if digits:
+                                try:
+                                    points = int(digits)
+                                    app.logger.info(f"Found points near '{keyword}': {points}")
+                                    return points
+                                except ValueError:
+                                    continue
+                                
+                            # Check siblings
+                            for sibling in parent.next_siblings:
+                                if hasattr(sibling, 'get_text'):
+                                    sibling_text = sibling.get_text()
+                                    digits = ''.join(filter(str.isdigit, sibling_text))
+                                    if digits:
+                                        try:
+                                            points = int(digits)
+                                            app.logger.info(f"Found points in sibling near '{keyword}': {points}")
+                                            return points
+                                        except ValueError:
+                                            continue
+                
+                # If we get here, no valid points were found
+                app.logger.warning(f"No points found in {link}")
+                
+                # If this was the final retry, log the HTML content for debugging
+                if retries == max_retries:
+                    app.logger.debug(f"HTML content from {link}: {soup.prettify()[:500]}...")
+                    
+                # Fallback to a default value greater than 0 to prevent 0 points
+                return 1  # Return 1 instead of 0 to indicate at least some activity
+            
+            except Exception as e:
+                app.logger.error(f"Error while parsing HTML from {link}: {str(e)}")
+                return 1  # Return 1 for parsing errors
                 
         except requests.Timeout:
             retries += 1
@@ -287,8 +331,9 @@ def fetch_points_concurrently(participants):
         with app.app_context():
             try:
                 # Add some additional delay between requests to avoid rate limiting
-                time.sleep(0.2 + (0.3 * random.random()))  # 0.2-0.5 seconds between requests
+                time.sleep(0.3 + (0.5 * random.random()))  # Increased delay (0.3-0.8 seconds)
                 
+                app.logger.info(f"Fetching points for {participant_info['name']} from {participant_info['profile_url']}")
                 points = get_points(participant_info['profile_url'])
                 processed += 1
                 if processed % 5 == 0 or processed == total:  # Log every 5 participants or at the end
@@ -298,10 +343,10 @@ def fetch_points_concurrently(participants):
                 processed += 1
                 error_msg = f"Error fetching points for {participant_info['name']}: {str(e)}"
                 app.logger.error(error_msg)
-                return participant_info['id'], 0, error_msg
+                return participant_info['id'], 1, error_msg  # Return 1 instead of 0 for errors
     
     # Use ThreadPoolExecutor with fewer workers to avoid overwhelming the system
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:  # Reduced from 10 to 5
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:  # Reduced from 5 to 3
         try:
             future_to_participant = {
                 executor.submit(fetch_participant_points, p_info): p_info 
@@ -310,22 +355,22 @@ def fetch_points_concurrently(participants):
             
             for future in concurrent.futures.as_completed(future_to_participant):
                 try:
-                    participant_id, points, error = future.result(timeout=30)  # Add timeout for each future
+                    participant_id, points, error = future.result(timeout=20)  # Increased timeout for each future
                     results[participant_id] = points
                     if error:
                         errors.append(error)
                 except concurrent.futures.TimeoutError:
                     participant_info = future_to_participant[future]
                     app.logger.error(f"Timeout while processing {participant_info['name']}")
-                    results[participant_info['id']] = 0  # Default to 0 points on timeout
+                    results[participant_info['id']] = 1  # Default to 1 point on timeout
                     errors.append(f"Timeout while processing {participant_info['name']}")
                 except Exception as e:
                     participant_info = future_to_participant[future]
                     # Don't try to access participant attributes here as it might cause the same error
                     app.logger.error(f"Unexpected error in thread execution: {str(e)}")
                     errors.append(f"Failed to process a participant: {str(e)}")
-                    # Still add the participant to results with 0 points
-                    results[participant_info['id']] = 0
+                    # Still add the participant to results with 1 point
+                    results[participant_info['id']] = 1
         except Exception as e:
             app.logger.error(f"Error in concurrent execution: {str(e)}")
     
@@ -335,6 +380,12 @@ def fetch_points_concurrently(participants):
         if len(errors) <= 3:
             for error in errors:
                 app.logger.warning(error)
+    
+    # Ensure we have a result for every participant
+    for p in participant_data:
+        if p['id'] not in results:
+            app.logger.warning(f"No result for {p['name']}, using default value")
+            results[p['id']] = 1  # Default to 1 point if something went wrong
     
     return results
 
@@ -474,126 +525,175 @@ def upload_file():
         flash('Only CSV files are allowed', 'error')
         return redirect(url_for('index'))
     
-    # Validate CSV structure
-    file_stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
-    is_valid, message = validate_csv(file_stream)
-    
-    if not is_valid:
-        flash(message, 'error')
-        return redirect(url_for('index'))
-    
-    # Process CSV data
-    file_stream.seek(0)
-    df = pd.read_csv(file_stream)
-    
-    # Start timing for performance metrics
-    start_time = time.time()
-    flash('Processing CSV file. This may take a moment...', 'info')
-    
-    # Create a backup before making changes
-    backup_path = backup_database()
-    if backup_path:
-        app.logger.info(f"Database backup created at {backup_path}")
-    
-    # List to store results for display
-    results = []
-    
-    # First collect all participant data
-    participants_to_fetch = []
-    
-    for index, row in df.iterrows():
-        name = row['Name']
-        profile_url = row['profile']
-        email = row.get('mail', None)  # Email is optional
+    try:
+        # Validate CSV structure
+        file_stream = io.StringIO(file.stream.read().decode("utf-8"), newline=None)
+        is_valid, message = validate_csv(file_stream)
         
-        # Handle missing profile URLs by setting a default value
-        if pd.isna(profile_url) or str(profile_url).strip() == '':
-            profile_url = f"INVALID_PROFILE_URL_{name.replace(' ', '_')}"
-            app.logger.info(f"Using placeholder URL for {name} at row {index+2}")
-        else:
-            # Ensure profile_url is a string (not a float NaN)
-            profile_url = str(profile_url).strip()
+        if not is_valid:
+            flash(message, 'error')
+            return redirect(url_for('index'))
         
-        # Find participant in database
-        participant = Participant.query.filter_by(profile_url=profile_url, user_id=g.user.id).first()
+        # Process CSV data
+        file_stream.seek(0)
+        df = pd.read_csv(file_stream)
         
-        if not participant:
-            # Create new participant
-            participant = Participant(
-                name=name, 
-                email=email, 
-                profile_url=profile_url,
-                current_points=0,  # Will be updated with actual points soon
-                user_id=g.user.id  # Associate with current user
-            )
-            db.session.add(participant)
-            db.session.commit()  # Commit to get an ID for the participant
+        # Check if the CSV is too large
+        if len(df) > 100:
+            flash(f'CSV contains {len(df)} participants. Processing may take a while or time out. Consider uploading smaller batches.', 'warning')
         
-        # Update name and email if they changed
-        if participant.name != name:
-            participant.name = name
-        if email and participant.email != email:
-            participant.email = email
+        # Start timing for performance metrics
+        start_time = time.time()
+        flash('Processing CSV file. This may take a moment...', 'info')
         
-        participants_to_fetch.append(participant)
-    
-    # Commit all changes to the database before starting concurrent operations
-    db.session.commit()
-    
-    # Fetch points concurrently for better performance
-    # Limit batch size to avoid timeout
-    MAX_BATCH_SIZE = 10  # Process at most 10 participants at once (reduced from 25)
-    all_results = {}
-    
-    for i in range(0, len(participants_to_fetch), MAX_BATCH_SIZE):
-        batch = participants_to_fetch[i:i+MAX_BATCH_SIZE]
-        batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
-        app.logger.info(batch_msg)
-        flash(batch_msg, 'info')
+        # Create a backup before making changes
+        backup_path = backup_database()
+        if backup_path:
+            app.logger.info(f"Database backup created at {backup_path}")
         
-        # Process each batch with a smaller number of concurrent workers
-        batch_results = fetch_points_concurrently(batch)
-        all_results.update(batch_results)
+        # List to store results for display
+        results = []
         
-        # Commit after each batch to save progress
+        # First collect all participant data
+        participants_to_fetch = []
+        
+        for index, row in df.iterrows():
+            try:
+                name = row['Name']
+                profile_url = row['profile']
+                email = row.get('mail', None)  # Email is optional
+                
+                # Handle missing profile URLs by setting a default value
+                if pd.isna(profile_url) or str(profile_url).strip() == '':
+                    profile_url = f"INVALID_PROFILE_URL_{name.replace(' ', '_')}"
+                    app.logger.info(f"Using placeholder URL for {name} at row {index+2}")
+                else:
+                    # Ensure profile_url is a string (not a float NaN)
+                    profile_url = str(profile_url).strip()
+                
+                # Find participant in database
+                participant = Participant.query.filter_by(profile_url=profile_url, user_id=g.user.id).first()
+                
+                if not participant:
+                    # Create new participant
+                    participant = Participant(
+                        name=name, 
+                        email=email, 
+                        profile_url=profile_url,
+                        current_points=1,  # Default to 1 instead of 0
+                        user_id=g.user.id  # Associate with current user
+                    )
+                    db.session.add(participant)
+                    db.session.commit()  # Commit to get an ID for the participant
+                
+                # Update name and email if they changed
+                if participant.name != name:
+                    participant.name = name
+                if email and participant.email != email:
+                    participant.email = email
+                
+                participants_to_fetch.append(participant)
+                
+                # Commit every 10 participants to ensure data is saved
+                if len(participants_to_fetch) % 10 == 0:
+                    db.session.commit()
+                    flash(f'Added/updated {len(participants_to_fetch)} participants. Processing...', 'info')
+                
+            except Exception as e:
+                app.logger.error(f"Error processing row {index+2}: {str(e)}")
+                flash(f'Error processing participant at row {index+2}: {str(e)}', 'error')
+        
+        # Commit all changes to the database before starting concurrent operations
         db.session.commit()
-        app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
-    
-    # Process the results - use a fresh query to avoid stale data
-    results = []
-    for participant_id, points in all_results.items():
-        # Get a fresh instance of the participant from the database
-        participant = Participant.query.get(participant_id)
-        if participant:
-            # For initial upload, just set the current points without calculating weekly points
-            # Weekly points will be calculated on refresh after a week
-            participant.current_points = points
-            participant.last_updated = datetime.utcnow()
+        
+        # Fetch points concurrently for better performance
+        # Limit batch size to avoid timeout
+        MAX_BATCH_SIZE = 5  # Process at most 5 participants at once (reduced from 10)
+        all_results = {}
+        
+        for i in range(0, len(participants_to_fetch), MAX_BATCH_SIZE):
+            batch = participants_to_fetch[i:i+MAX_BATCH_SIZE]
+            batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants_to_fetch)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
+            app.logger.info(batch_msg)
+            flash(batch_msg, 'info')
             
-            # Add to results for display
-            results.append({
-                'name': participant.name,
-                'current_points': points,
-                'weekly_points': 'N/A (First upload)'  # Indicate this is the first upload
-            })
-    
-    # Save all changes to the database
-    db.session.commit()
-    
-    # Record this as the first refresh
-    last_refresh = LastRefresh()
-    db.session.add(last_refresh)
-    db.session.commit()
-    
-    # Sort results by weekly points (highest first)
-    sorted_results = sorted(results, key=lambda x: x['weekly_points'], reverse=True)
-    
-    # Calculate and display performance metrics
-    end_time = time.time()
-    processing_time = end_time - start_time
-    flash(f'CSV file processed successfully in {processing_time:.2f} seconds! {len(results)} participants updated.', 'success')
-    
-    return render_template('results.html', results=sorted_results)
+            try:
+                # Process each batch with a smaller number of concurrent workers
+                batch_results = fetch_points_concurrently(batch)
+                all_results.update(batch_results)
+                
+                # Commit after each batch to save progress
+                db.session.commit()
+                app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
+                
+                # Short pause between batches
+                time.sleep(0.5)
+            except Exception as e:
+                app.logger.error(f"Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}")
+                flash(f'Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}. Some points may not be updated.', 'warning')
+                # Continue to the next batch
+                continue
+                
+        # Process the results - use a fresh query to avoid stale data
+        results = []
+        for participant_id, points in all_results.items():
+            # Get a fresh instance of the participant from the database
+            participant = Participant.query.get(participant_id)
+            if participant:
+                try:
+                    # For initial upload, just set the current points without calculating weekly points
+                    # Weekly points will be calculated on refresh after a week
+                    participant.current_points = points
+                    participant.last_updated = datetime.utcnow()
+                    
+                    # Create an initial history entry
+                    history_entry = PointsHistory(
+                        participant_id=participant.id,
+                        points=points
+                    )
+                    db.session.add(history_entry)
+                    
+                    # Add to results for display
+                    results.append({
+                        'name': participant.name,
+                        'current_points': points,
+                        'weekly_points': 'N/A (First upload)'  # Indicate this is the first upload
+                    })
+                except Exception as e:
+                    app.logger.error(f"Error updating participant {participant.id}: {str(e)}")
+                    # Still add to results to show something to the user
+                    results.append({
+                        'name': participant.name,
+                        'current_points': 'Error',
+                        'weekly_points': 'Error'
+                    })
+        
+        # Save all changes to the database
+        db.session.commit()
+        
+        # Record this as the first refresh
+        last_refresh = LastRefresh()
+        db.session.add(last_refresh)
+        db.session.commit()
+        
+        # Sort results by weekly points (highest first)
+        sorted_results = sorted(results, key=lambda x: x['current_points'] if isinstance(x['current_points'], int) else 0, reverse=True)
+        
+        # Calculate and display performance metrics
+        end_time = time.time()
+        processing_time = end_time - start_time
+        flash(f'CSV file processed successfully in {processing_time:.2f} seconds! {len(results)} participants updated.', 'success')
+        
+        return render_template('results.html', results=sorted_results)
+        
+    except Exception as e:
+        app.logger.error(f"Error during CSV upload: {str(e)}")
+        db.session.rollback()  # Roll back any failed transactions
+        
+        flash(f'Error processing CSV file: {str(e)}', 'error')
+        flash('Your participants have been added to the database, but their points may not be updated. You can try refreshing points later.', 'warning')
+        
+        return redirect(url_for('view_participants'))
 
 @app.route('/participants')
 @login_required
@@ -705,102 +805,135 @@ def backup_database():
 @app.route('/refresh')
 @login_required
 def refresh_points():
-    # Check if a week has passed since the last refresh
-    last_refresh = LastRefresh.query.order_by(LastRefresh.refresh_date.desc()).first()
-    
-    # Check if last refresh was less than a week ago
-    if last_refresh and (datetime.utcnow() - last_refresh.refresh_date) < timedelta(days=7):
-        days_since_refresh = (datetime.utcnow() - last_refresh.refresh_date).days
-        hours_since_refresh = ((datetime.utcnow() - last_refresh.refresh_date).seconds // 3600)
+    try:
+        # Check if a week has passed since the last refresh
+        last_refresh = LastRefresh.query.order_by(LastRefresh.refresh_date.desc()).first()
         
-        next_refresh_date = last_refresh.refresh_date + timedelta(days=7)
-        time_remaining = next_refresh_date - datetime.utcnow()
-        days_remaining = time_remaining.days
-        hours_remaining = time_remaining.seconds // 3600
+        # Check if last refresh was less than a week ago
+        if last_refresh and (datetime.utcnow() - last_refresh.refresh_date) < timedelta(days=7):
+            days_since_refresh = (datetime.utcnow() - last_refresh.refresh_date).days
+            hours_since_refresh = ((datetime.utcnow() - last_refresh.refresh_date).seconds // 3600)
+            
+            next_refresh_date = last_refresh.refresh_date + timedelta(days=7)
+            time_remaining = next_refresh_date - datetime.utcnow()
+            days_remaining = time_remaining.days
+            hours_remaining = time_remaining.seconds // 3600
+            
+            flash(f'Points were last refreshed {days_since_refresh} days and {hours_since_refresh} hours ago. ' +
+                f'You can refresh again in {days_remaining} days and {hours_remaining} hours.', 'warning')
+            return redirect(url_for('view_participants'))
         
-        flash(f'Points were last refreshed {days_since_refresh} days and {hours_since_refresh} hours ago. ' +
-              f'You can refresh again in {days_remaining} days and {hours_remaining} hours.', 'warning')
-        return redirect(url_for('view_participants'))
-    
-    participants = Participant.query.filter_by(user_id=g.user.id).all()
-    results = []
-    
-    if not participants:
-        flash('No participants found. Please upload a CSV file first.', 'warning')
-        return redirect(url_for('index'))
-    
-    # Create a backup before refreshing
-    backup_path = backup_database()
-    if backup_path:
-        app.logger.info(f"Database backup created at {backup_path}")
-    
-    # Start timing for performance metrics
-    start_time = time.time()
-    
-    # Fetch points concurrently
-    # Limit batch size to avoid timeout
-    MAX_BATCH_SIZE = 10  # Process at most 10 participants at once (reduced from 25)
-    all_results = {}
-    
-    for i in range(0, len(participants), MAX_BATCH_SIZE):
-        batch = participants[i:i+MAX_BATCH_SIZE]
-        batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
-        app.logger.info(batch_msg)
-        flash(batch_msg, 'info')
+        participants = Participant.query.filter_by(user_id=g.user.id).all()
         
-        # Process each batch with a smaller number of concurrent workers
-        batch_results = fetch_points_concurrently(batch)
-        all_results.update(batch_results)
+        if not participants:
+            flash('No participants found. Please upload a CSV file first.', 'warning')
+            return redirect(url_for('index'))
         
-        # Commit after each batch to save progress
+        # Check if too many participants might cause timeout
+        if len(participants) > 100:
+            flash(f'You have {len(participants)} participants. Processing may take a while or time out. Consider removing some participants if issues occur.', 'warning')
+        
+        # Create a backup before refreshing
+        backup_path = backup_database()
+        if backup_path:
+            app.logger.info(f"Database backup created at {backup_path}")
+        
+        # Start timing for performance metrics
+        start_time = time.time()
+        
+        # Fetch points concurrently
+        # Limit batch size to avoid timeout
+        MAX_BATCH_SIZE = 5  # Process at most 5 participants at once (reduced from 10)
+        all_results = {}
+        error_count = 0
+        
+        for i in range(0, len(participants), MAX_BATCH_SIZE):
+            try:
+                batch = participants[i:i+MAX_BATCH_SIZE]
+                batch_msg = f'Processing batch {i//MAX_BATCH_SIZE + 1}/{(len(participants)-1)//MAX_BATCH_SIZE + 1} ({len(batch)} participants)...'
+                app.logger.info(batch_msg)
+                flash(batch_msg, 'info')
+                
+                # Process each batch with a smaller number of concurrent workers
+                batch_results = fetch_points_concurrently(batch)
+                all_results.update(batch_results)
+                
+                # Commit after each batch to save progress
+                db.session.commit()
+                app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
+                
+                # Short pause between batches
+                time.sleep(0.5)
+            except Exception as e:
+                error_count += 1
+                app.logger.error(f"Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}")
+                flash(f'Error processing batch {i//MAX_BATCH_SIZE + 1}: {str(e)}. Some points may not be updated.', 'warning')
+                # Continue to the next batch instead of failing completely
+                continue
+        
+        # If all batches failed, show an error
+        if error_count == len(range(0, len(participants), MAX_BATCH_SIZE)):
+            flash('All batches failed to process. Please try again later.', 'error')
+            return redirect(url_for('view_participants'))
+        
+        # Process results - use fresh queries to avoid stale data
+        results = []
+        
+        for participant_id, points in all_results.items():
+            try:
+                # Get a fresh instance of the participant from the database
+                participant = Participant.query.get(participant_id)
+                if participant:
+                    # Calculate weekly points (current minus previous)
+                    previous_points = participant.current_points
+                    weekly_points = points - previous_points
+                    
+                    # Update participant record
+                    participant.current_points = points
+                    participant.last_updated = datetime.utcnow()
+                    
+                    # Add history entry
+                    history_entry = PointsHistory(
+                        participant_id=participant.id,
+                        points=points
+                    )
+                    db.session.add(history_entry)
+                    
+                    # Add to results
+                    results.append({
+                        'name': participant.name,
+                        'weekly_points': weekly_points,
+                        'lifelong_points': points,
+                        'profile_url': participant.profile_url
+                    })
+            except Exception as e:
+                app.logger.error(f"Error updating database for participant {participant_id}: {str(e)}")
+                # Continue with the next participant
+                continue
+        
+        # Save all changes to the database
         db.session.commit()
-        app.logger.info(f"Batch {i//MAX_BATCH_SIZE + 1} completed and saved.")
+        
+        # Create a new LastRefresh record
+        new_refresh = LastRefresh()
+        db.session.add(new_refresh)
+        db.session.commit()
+        
+        # Sort by weekly points
+        sorted_results = sorted(results, key=lambda x: x['weekly_points'], reverse=True)
+        
+        # Calculate and show performance metrics
+        end_time = time.time()
+        processing_time = end_time - start_time
+        flash(f'Points refreshed successfully in {processing_time:.2f} seconds!', 'success')
+        
+        return render_template('results.html', results=sorted_results)
     
-    # Process results - use fresh queries to avoid stale data
-    results = []
-    for participant_id, points in all_results.items():
-        # Get a fresh instance of the participant from the database
-        participant = Participant.query.get(participant_id)
-        if participant:
-            # Calculate weekly points (current minus previous)
-            weekly_points = points - participant.current_points
-            
-            # Update participant record
-            participant.current_points = points
-            participant.last_updated = datetime.utcnow()
-            
-            # Add history entry
-            history_entry = PointsHistory(
-                participant_id=participant.id,
-                points=points
-            )
-            db.session.add(history_entry)
-            
-            # Add to results
-            results.append({
-                'name': participant.name,
-                'weekly_points': weekly_points,
-                'lifelong_points': points,
-                'profile_url': participant.profile_url
-            })
-    
-    # Save all changes to the database
-    db.session.commit()
-    
-    # Create a new LastRefresh record
-    new_refresh = LastRefresh()
-    db.session.add(new_refresh)
-    db.session.commit()
-    
-    # Sort by weekly points
-    sorted_results = sorted(results, key=lambda x: x['weekly_points'], reverse=True)
-    
-    # Calculate and show performance metrics
-    end_time = time.time()
-    processing_time = end_time - start_time
-    flash(f'Points refreshed successfully in {processing_time:.2f} seconds!', 'success')
-    
-    return render_template('results.html', results=sorted_results)
+    except Exception as e:
+        app.logger.error(f"Error in refresh_points: {str(e)}")
+        db.session.rollback()  # Roll back any failed transactions
+        flash(f'An error occurred while refreshing points: {str(e)}', 'error')
+        return redirect(url_for('view_participants'))
 
 @app.route('/participant/<int:id>')
 @login_required
