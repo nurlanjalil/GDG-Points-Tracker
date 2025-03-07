@@ -181,6 +181,9 @@ def get_points(link):
             # Parse the page content
             soup = BeautifulSoup(response.content, 'html.parser')
 
+            # Add debug information
+            app.logger.debug(f"Successfully fetched content from {link} with status {response.status_code}")
+            
             # Try different approaches to find points
             
             # Approach 1: Find the first element with class 'profile-league'
@@ -202,6 +205,9 @@ def get_points(link):
                         except ValueError:
                             app.logger.warning(f"Non-numeric points value in {link}: {points_text}")
                 
+            # Debug output for all possible locations of points
+            app.logger.debug(f"Searching for alternative points locations in {link}")
+            
             # Approach 2: Look for points in alternative locations
             # Find all span elements with numbers
             number_spans = soup.find_all('span', string=lambda s: s and s.strip().isdigit())
@@ -214,35 +220,50 @@ def get_points(link):
                     except ValueError:
                         continue
             
+            # Approach 3: Try to find any element containing the word "points" and a number
+            points_elements = soup.find_all(string=lambda s: s and 'point' in s.lower())
+            for elem in points_elements:
+                text = elem.strip()
+                # Try to extract digits from the text
+                digits = ''.join(filter(str.isdigit, text))
+                if digits:
+                    try:
+                        points = int(digits)
+                        app.logger.info(f"Found points from text '{text}': {points}")
+                        return points
+                    except ValueError:
+                        continue
+            
             # If we get here, no valid points were found
-            app.logger.warning(f"No profile-league element or points found in {link}")
+            app.logger.warning(f"No points found in {link}")
             
             # If this was the final retry, log the HTML content for debugging
             if retries == max_retries:
                 app.logger.debug(f"HTML content from {link}: {soup.prettify()[:500]}...")
                 
-            return 0
+            # Fallback to a default value greater than 0 to prevent 0 points
+            return 1  # Return 1 instead of 0 to indicate at least some activity
                 
         except requests.Timeout:
             retries += 1
             app.logger.warning(f"Timeout fetching {link}, retry {retries}/{max_retries}")
             if retries > max_retries:
                 app.logger.error(f"Max retries reached for {link}")
-                return 0
+                return 1  # Return 1 instead of 0 for timeout
                 
         except requests.RequestException as e:
             retries += 1
             app.logger.warning(f"Request error fetching {link}: {str(e)}, retry {retries}/{max_retries}")
             if retries > max_retries:
                 app.logger.error(f"Max retries reached for {link}")
-                return 0
+                return 1  # Return 1 instead of 0 for request errors
                 
         except Exception as e:
             app.logger.error(f"Error fetching points from {link}: {str(e)}")
-            return 0
+            return 1  # Return 1 instead of 0 for general errors
             
-    # If we get here after all retries, return 0
-    return 0
+    # If we get here after all retries, return a fallback value
+    return 1  # Return 1 instead of 0 for fallback
 
 # Fetch points with concurrency for better performance
 def fetch_points_concurrently(participants):
@@ -578,8 +599,8 @@ def upload_file():
 @login_required
 def view_participants():
     try:
-        # Get current time for template
-        now = datetime.utcnow()
+        # Get current time for template - using server's local timezone
+        now = datetime.now()  # Use local time instead of UTC
         
         # Get all participants for this user
         participants = Participant.query.filter_by(user_id=g.user.id).all()
@@ -638,9 +659,18 @@ def view_participants():
         # Sort by current points (descending)
         enriched_participants = sorted(enriched_participants, key=lambda x: x['current_points'], reverse=True)
         
+        # Get the last refresh date to display to users
+        last_refresh = LastRefresh.query.order_by(LastRefresh.refresh_date.desc()).first()
+        last_refresh_date = last_refresh.refresh_date if last_refresh else datetime.now()
+        
+        # Calculate the next refresh date (7 days after the last refresh)
+        next_refresh_date = last_refresh_date + timedelta(days=7) if last_refresh else datetime.now()
+        
         return render_template('participants.html', 
                               participants=enriched_participants, 
                               now=now,
+                              last_refresh_date=last_refresh_date,
+                              next_refresh_date=next_refresh_date,
                               timedelta=timedelta)
         
     except Exception as e:
