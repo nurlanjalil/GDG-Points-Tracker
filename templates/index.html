@@ -27,17 +27,39 @@
                     </p>
                 </div>
 
-                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" class="mt-4">
+                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data" class="mt-4" id="upload-form">
                     <div class="mb-3">
                         <label for="csv_file" class="form-label">Select CSV File</label>
                         <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
                     </div>
                     <div class="d-grid gap-2">
-                        <button type="submit" class="btn btn-primary btn-lg">Upload and Get Points</button>
+                        <button type="submit" class="btn btn-primary btn-lg" id="submit-btn">Upload and Get Points</button>
                     </div>
                 </form>
+
+                <!-- Loading spinner (hidden by default) -->
+                <div id="processing-indicator" class="text-center mt-4 d-none">
+                    <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="lead text-primary">Processing CSV file...</p>
+                    <p class="text-muted">This may take a few moments depending on the number of profiles.</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Show loading spinner when form is submitted
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        // Hide the submit button
+        document.getElementById('submit-btn').disabled = true;
+        
+        // Show the processing indicator
+        document.getElementById('processing-indicator').classList.remove('d-none');
+    });
+</script>
 {% endblock %} 

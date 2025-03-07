@@ -173,6 +173,9 @@ def upload():
         return redirect(url_for('index'))
     
     try:
+        # Small delay to ensure the loading spinner is visible to users
+        time.sleep(1)
+        
         # Generate a unique filename
         timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S')
         filename = f"{timestamp}_{secure_filename(file.filename)}"
@@ -242,7 +245,7 @@ def upload():
         if valid_participants:
             # Show processing message
             total_profiles = len(valid_participants)
-            flash(f"Processing {total_profiles} profiles...", 'info')
+            flash(f"Starting to process {total_profiles} profiles...", 'info')
             
             # Processing progress tracking
             processed_count = 0
