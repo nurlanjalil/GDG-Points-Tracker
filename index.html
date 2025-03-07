@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GDG Points Tracker</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .header {
+            background-color: #4285F4;
+            color: white;
+            padding: 60px 0;
+            margin-bottom: 40px;
+        }
+        .navbar-brand {
+            font-weight: bold;
+        }
+        .card {
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .footer {
+            margin-top: 50px;
+            padding: 20px 0;
+            background-color: #f8f9fa;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-light bg-light">
+        <div class="container">
+            <a class="navbar-brand" href="index.html">
+                <span style="color: #4285F4;">GDG</span> Points Tracker
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" 
+                    aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link active" href="index.html">Home</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://gdg-points-tracker.onrender.com/login" target="_blank">Login to App</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header -->
+    <header class="header text-center">
+        <div class="container">
+            <h1 class="display-4">GDG Points Tracker</h1>
+            <p class="lead">Track participants' progress in Google Developer Groups community programs</p>
+            <a href="https://gdg-points-tracker.onrender.com/register" class="btn btn-light btn-lg mt-3">Get Started</a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="container">
+        <div class="row">
+            <div class="col-md-8 mx-auto text-center mb-5">
+                <h2>Track Community Progress with Ease</h2>
+                <p class="lead">GDG Points Tracker helps you monitor participant progress in Google Cloud Skills Boost and other community programs.</p>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-cloud-upload fs-1 text-primary mb-3"></i>
+                        <h3>Easy CSV Upload</h3>
+                        <p>Upload participant data through a simple CSV format.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-graph-up-arrow fs-1 text-success mb-3"></i>
+                        <h3>Track Progress</h3>
+                        <p>Monitor weekly and total points with visual indicators.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body text-center">
+                        <i class="bi bi-person-lock fs-1 text-danger mb-3"></i>
+                        <h3>User Accounts</h3>
+                        <p>Each user manages their own set of participants securely.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-5">
+            <div class="col-md-6">
+                <h3>How It Works</h3>
+                <ol class="list-group list-group-numbered mb-4">
+                    <li class="list-group-item">Register for an account</li>
+                    <li class="list-group-item">Upload your CSV with participant data</li>
+                    <li class="list-group-item">View current participant points</li>
+                    <li class="list-group-item">Refresh weekly to track progress</li>
+                    <li class="list-group-item">Analyze weekly and total performance</li>
+                </ol>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="mb-0">Get Started Now</h3>
+                    </div>
+                    <div class="card-body">
+                        <p>Ready to track your community's progress? The app is hosted on Render.com with secure databases and reliable performance.</p>
+                        <div class="d-grid gap-2">
+                            <a href="https://gdg-points-tracker.onrender.com/login" class="btn btn-primary">Login</a>
+                            <a href="https://gdg-points-tracker.onrender.com/register" class="btn btn-outline-primary">Register</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2023 GDG Points Tracker | <a href="https://github.com/nurlanjalil/GDG-Points-Tracker" target="_blank">GitHub</a></p>
+        </div>
+    </footer>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
