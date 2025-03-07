@@ -60,6 +60,10 @@
         color: #dc3545;
     }
 </style>
+<script>
+    // Store the file ID as a global variable
+    var GLOBAL_FILE_ID = "{{ file_id }}";
+</script>
 {% endblock %}
 
 {% block content %}
@@ -166,9 +170,8 @@
     });
     
     function startProcessing() {
-        // Get the CSV file ID from the URL
-        const urlParams = new URLSearchParams(window.location.search);
-        const fileId = urlParams.get('file_id');
+        // Get the file ID from the global variable
+        const fileId = GLOBAL_FILE_ID;
         
         if (!fileId) {
             addLogEntry('No file ID provided', 'error');

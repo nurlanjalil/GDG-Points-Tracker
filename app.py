@@ -564,7 +564,7 @@ def upload_csv():
             'batches': []
         }
         
-        # Redirect to processing page
+        # Redirect to processing page with file_id parameter
         return redirect(url_for('processing_page', file_id=file_id))
         
     except Exception as e:
@@ -576,12 +576,17 @@ def upload_csv():
 @login_required
 def processing_page(file_id):
     """Render the processing page for the given file ID"""
-    # Check if the file ID exists and belongs to the current user
-    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
-        flash('Invalid or expired file ID', 'error')
+    # Check if file_id is empty
+    if not file_id:
+        flash('No file ID provided', 'error')
         return redirect(url_for('index'))
     
-    # Render the processing template
+    # Check if the file ID exists and belongs to the current user
+    if file_id not in processing_state or processing_state[file_id]['user_id'] != g.user.id:
+        flash(f'Invalid or expired file ID: {file_id}', 'error')
+        return redirect(url_for('index'))
+    
+    # Render the processing template with file_id directly in the template
     return render_template('processing.html', file_id=file_id)
 
 @app.route('/api/validate_csv/<file_id>')
