@@ -60,10 +60,6 @@
         color: #dc3545;
     }
 </style>
-<script>
-    // Store the file ID as a global variable
-    var GLOBAL_FILE_ID = "{{ file_id }}";
-</script>
 {% endblock %}
 
 {% block content %}
@@ -164,7 +160,18 @@
 </div>
 
 <script>
+    // Store the file ID as a global variable - moved here from head section
+    var GLOBAL_FILE_ID = "{{ file_id }}";
+    
     document.addEventListener('DOMContentLoaded', function() {
+        // Ensure GLOBAL_FILE_ID is defined and not empty before proceeding
+        if (typeof GLOBAL_FILE_ID === 'undefined' || !GLOBAL_FILE_ID) {
+            console.error('File ID is not defined or empty');
+            addLogEntry('Error: File ID is missing or undefined', 'error');
+            updateStatus('Error: File ID is missing or undefined', 'error');
+            return;
+        }
+        
         // Start the process when the page loads
         startProcessing();
     });
@@ -409,14 +416,18 @@
     
     function updateProgressBar(percent) {
         const progressBar = document.getElementById('progress-bar');
+        if (!progressBar) return;
+        
         progressBar.style.width = `${percent}%`;
         progressBar.setAttribute('aria-valuenow', percent);
         progressBar.textContent = `${percent}%`;
     }
     
     function updateBatchProgress(current, total) {
-        const percent = Math.floor((current / total) * 100);
         const progressBar = document.getElementById('batch-progress');
+        if (!progressBar) return;
+        
+        const percent = Math.floor((current / total) * 100);
         progressBar.style.width = `${percent}%`;
         progressBar.setAttribute('aria-valuenow', percent);
         progressBar.textContent = `${percent}%`;
@@ -424,9 +435,12 @@
     
     function updateStepStatus(stepId, status) {
         const step = document.getElementById(stepId);
+        if (!step) return;
+        
         step.className = `step step-${status}`;
         
         const statusDiv = step.querySelector('.step-status');
+        if (!statusDiv) return;
         
         if (status === 'active') {
             statusDiv.innerHTML = '<div class="spinner-border text-primary step-spinner" role="status"><span class="visually-hidden">Loading...</span></div>';
