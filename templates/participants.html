@@ -88,49 +88,40 @@
                                 <tr>
                                     <th>Rank</th>
                                     <th>Name</th>
+                                    <th>Previous Points</th>
                                     <th>Current Points</th>
-                                    <th>Last Change</th>
+                                    <th>Weekly Change</th>
                                     <th>Last Updated</th>
+                                    <th>Profile</th>
                                     <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for participant in participants|sort(attribute='current_points', reverse=True) %}
+                                {% for p in participants %}
                                 <tr>
                                     <td>{{ loop.index }}</td>
-                                    <td>{{ participant.name }}</td>
-                                    <td>{{ participant.current_points }}</td>
+                                    <td>{{ p.name }}</td>
+                                    <td>{{ p.previous_points }}</td>
+                                    <td>{{ p.current_points }}</td>
                                     <td>
-                                        {% if participant.history|length > 1 %}
-                                            {% set history_sorted = participant.history|sort(attribute='date_recorded', reverse=True) %}
-                                            {% set latest = history_sorted[0] %}
-                                            {% if history_sorted|length > 1 %}
-                                                {% set previous = history_sorted[1] %}
-                                                {% set change = latest.points - previous.points %}
-                                                {% if change > 0 %}
-                                                    <span class="badge bg-success">+{{ change }}</span>
-                                                {% elif change < 0 %}
-                                                    <span class="badge bg-danger">{{ change }}</span>
-                                                {% else %}
-                                                    <span class="badge bg-secondary">0</span>
-                                                {% endif %}
-                                            {% else %}
-                                                <span class="badge bg-secondary">New</span>
-                                            {% endif %}
+                                        {% if p.weekly_change > 0 %}
+                                            <span class="badge bg-success">+{{ p.weekly_change }}</span>
+                                        {% elif p.weekly_change < 0 %}
+                                            <span class="badge bg-danger">{{ p.weekly_change }}</span>
                                         {% else %}
-                                            <span class="badge bg-secondary">New</span>
+                                            <span class="badge bg-secondary">0</span>
                                         {% endif %}
                                     </td>
-                                    <td>{{ participant.last_updated.strftime('%d %b %Y, %H:%M') }}</td>
+                                    <td>{{ p.last_updated.strftime('%d %b %Y, %H:%M') }}</td>
                                     <td>
-                                        <div class="btn-group" role="group">
-                                            <a href="{{ url_for('participant_history', id=participant.id) }}" class="btn btn-sm btn-outline-info">
-                                                <i class="bi bi-clock-history"></i> History
-                                            </a>
-                                            <a href="{{ participant.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                                <i class="bi bi-box-arrow-up-right"></i> Profile
-                                            </a>
-                                        </div>
+                                        <a href="{{ p.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-box-arrow-up-right"></i> View
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('participant_history', id=p.id) }}" class="btn btn-sm btn-outline-info">
+                                            <i class="bi bi-clock-history"></i> History
+                                        </a>
                                     </td>
                                 </tr>
                                 {% endfor %}
@@ -158,36 +149,22 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% set weekly_participants = [] %}
-                                {% for participant in participants %}
-                                    {% if participant.history|length > 1 %}
-                                        {% set history_sorted = participant.history|sort(attribute='date_recorded', reverse=True) %}
-                                        {% set latest = history_sorted[0] %}
-                                        {% if history_sorted|length > 1 %}
-                                            {% set previous = history_sorted[1] %}
-                                            {% set weekly_points = latest.points - previous.points %}
-                                            {% set participant_with_points = {'participant': participant, 'weekly_points': weekly_points} %}
-                                            {% set _ = weekly_participants.append(participant_with_points) %}
-                                        {% endif %}
-                                    {% endif %}
-                                {% endfor %}
-                                
-                                {% for item in weekly_participants|sort(attribute='weekly_points', reverse=True) %}
+                                {% for p in participants %}
                                     <tr>
                                         <td>{{ loop.index }}</td>
-                                        <td>{{ item.participant.name }}</td>
+                                        <td>{{ p.name }}</td>
                                         <td>
-                                            {% if item.weekly_points > 0 %}
-                                                <span class="badge bg-success">+{{ item.weekly_points }}</span>
-                                            {% elif item.weekly_points < 0 %}
-                                                <span class="badge bg-danger">{{ item.weekly_points }}</span>
+                                            {% if p.weekly_change > 0 %}
+                                                <span class="badge bg-success">+{{ p.weekly_change }}</span>
+                                            {% elif p.weekly_change < 0 %}
+                                                <span class="badge bg-danger">{{ p.weekly_change }}</span>
                                             {% else %}
                                                 <span class="badge bg-secondary">0</span>
                                             {% endif %}
                                         </td>
-                                        <td>{{ item.participant.current_points }}</td>
+                                        <td>{{ p.current_points }}</td>
                                         <td>
-                                            <a href="{{ item.participant.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
+                                            <a href="{{ p.profile_url }}" target="_blank" class="btn btn-sm btn-outline-primary">
                                                 <i class="bi bi-box-arrow-up-right"></i> View Profile
                                             </a>
                                         </td>

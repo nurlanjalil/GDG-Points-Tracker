@@ -19,11 +19,21 @@ import threading
 
 # Initialize Flask app
 app = Flask(__name__)
+
+# Configuration using environment variables with fallbacks for development
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-for-gdg-points-tracker')
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///gdg_points.db')
+if app.config['SECRET_KEY'] == 'dev-key-for-gdg-points-tracker':
+    app.logger.warning("Using development SECRET_KEY. Set a proper SECRET_KEY in production!")
+
+# Configure database
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///gdg_points.db')
+# Handle PostgreSQL URL format for Render.com
+if database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-    'connect_args': {'check_same_thread': False}  # Allow SQLite to be used across threads
+    'connect_args': {'check_same_thread': False} if database_url.startswith('sqlite:') else {}
 }
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max-limit
@@ -33,6 +43,14 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 # Initialize database
 db = SQLAlchemy(app)
+
+# Create tables automatically
+with app.app_context():
+    try:
+        db.create_all()
+        app.logger.info("Database tables created (if they didn't exist)")
+    except Exception as e:
+        app.logger.error(f"Error creating database tables: {str(e)}")
 
 # Register Jinja2 filters
 @app.template_filter('strftime')
@@ -102,10 +120,6 @@ class LastRefresh(db.Model):
     
     def __repr__(self):
         return f'<LastRefresh on {self.refresh_date}>'
-
-# Create database tables if they don't exist
-with app.app_context():
-    db.create_all()
 
 # Helper function to get points from a profile URL
 def get_points(link):
@@ -445,7 +459,50 @@ def upload_file():
 @login_required
 def view_participants():
     participants = Participant.query.filter_by(user_id=g.user.id).all()
-    return render_template('participants.html', participants=participants)
+    
+    # Prepare participants with additional data for the template
+    enriched_participants = []
+    for participant in participants:
+        # Get history records sorted by date (most recent first)
+        history_sorted = sorted(participant.history, key=lambda x: x.date_recorded, reverse=True)
+        
+        # Current points (latest)
+        current_points = participant.current_points
+        
+        # Previous week points
+        previous_points = 0
+        weekly_change = 0
+        
+        if history_sorted and len(history_sorted) > 1:
+            # If we have at least two history records, calculate the difference
+            current = history_sorted[0].points
+            previous = history_sorted[1].points
+            previous_points = previous
+            weekly_change = current - previous
+        elif history_sorted and len(history_sorted) == 1:
+            # If we only have one record, use it as current
+            current = history_sorted[0].points
+            previous_points = 0
+            weekly_change = current
+        
+        # Add enriched data
+        enriched_participants.append({
+            'id': participant.id,
+            'name': participant.name,
+            'profile_url': participant.profile_url,
+            'current_points': current_points,
+            'previous_points': previous_points,
+            'weekly_change': weekly_change,
+            'last_updated': participant.last_updated,
+            'email': participant.email,
+            # Pass the original participant for backward compatibility
+            'participant': participant
+        })
+    
+    # Sort by weekly change (descending)
+    enriched_participants = sorted(enriched_participants, key=lambda x: x['weekly_change'], reverse=True)
+    
+    return render_template('participants.html', participants=enriched_participants)
 
 # Create a backup of the database
 def backup_database():
@@ -604,6 +661,20 @@ def utility_processor():
         now=datetime.utcnow(),
         timedelta=timedelta  # Also provide timedelta for date calculations in templates
     )
+
+# Maintenance route for database setup (protected by setup key)
+@app.route('/setup-database/<setup_key>')
+def setup_database(setup_key):
+    # Check if setup key matches the environment variable or default value
+    expected_key = os.environ.get('SETUP_KEY', 'change-this-setup-key-in-production')
+    if setup_key != expected_key:
+        return "Access denied", 403
+    
+    try:
+        db.create_all()
+        return "Database tables created successfully!"
+    except Exception as e:
+        return f"Error creating database tables: {str(e)}", 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080) 
