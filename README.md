@@ -1,6 +1,10 @@
 # GDG Points Tracker
 
-A simple Flask-based web application to track Google Developer Groups community program participants' points from Google Cloud Skills Boost profiles.
+A simple web application to track Google Developer Groups community program participants' points from Google Cloud Skills Boost profiles.
+
+## Live Demo
+
+**🚀 Try it now: [GDG Points Tracker](https://gdg-points-tracker.onrender.com/)**
 
 ## Features
 
@@ -10,7 +14,25 @@ A simple Flask-based web application to track Google Developer Groups community 
 - **Copy Functionality**: Easily copy points data for use in other applications
 - **Simple Interface**: Clean Bootstrap interface with responsive design
 
-## Installation
+## Usage
+
+1. Visit [GDG Points Tracker](https://gdg-points-tracker.onrender.com/)
+2. Upload a CSV file with participant data
+   - CSV must contain 'Name' and 'profile' columns
+   - 'profile' column should contain Google Cloud Skills Boost profile URLs
+3. View participants' current points
+4. Use the "Copy Points Only" or "Copy Name and Points" buttons to copy data to clipboard
+
+## CSV Format
+
+The application expects a CSV file with the following format:
+
+| Name | profile |
+|------|---------|
+| John Doe | https://www.cloudskillsboost.google/public_profiles/... |
+| Jane Smith | https://www.cloudskillsboost.google/public_profiles/... |
+
+## Local Development
 
 ### Prerequisites
 
@@ -47,30 +69,15 @@ python app.py
 
 The application will be available at http://127.0.0.1:5000/
 
-## Usage
-
-1. Upload a CSV file with participant data
-   - CSV must contain 'Name' and 'profile' columns
-   - 'profile' column should contain Google Cloud Skills Boost profile URLs
-2. View participants' current points
-3. Use the "Copy Points Only" or "Copy Name and Points" buttons to copy data to clipboard
-
-## CSV Format
-
-The application expects a CSV file with the following format:
-
-| Name | profile |
-|------|---------|
-| John Doe | https://www.cloudskillsboost.google/public_profiles/... |
-| Jane Smith | https://www.cloudskillsboost.google/public_profiles/... |
-
 ## How It Works
 
 The application uses BeautifulSoup to scrape points data from Google Cloud Skills Boost profile pages. When a CSV is uploaded, the app processes each profile URL in parallel to fetch the points values efficiently.
 
 ## Deployment
 
-To deploy the application:
+The application is currently deployed on Render at [gdg-points-tracker.onrender.com](https://gdg-points-tracker.onrender.com/).
+
+To deploy your own instance:
 
 1. Install the requirements: `pip install -r requirements.txt`
 2. Run the application: `python app.py` or `gunicorn app:app` for production
