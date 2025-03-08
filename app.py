@@ -42,17 +42,17 @@ def get_points(link):
     try:
         # Make a GET request to the link
         response = requests.get(link)
-        response.raise_for_status()  # Raise an exception for bad status codes
+            response.raise_for_status()  # Raise an exception for bad status codes
 
-        # Parse the page content
-        soup = BeautifulSoup(response.content, 'html.parser')
+            # Parse the page content
+            soup = BeautifulSoup(response.content, 'html.parser')
 
         # Method 1: Find the first element with class 'profile-league'
-        profile_league = soup.find(class_='profile-league')
-        if profile_league:
+                profile_league = soup.find(class_='profile-league')
+                if profile_league:
             # Try to find the strong tag directly
-            strong_tag = profile_league.find('strong')
-            if strong_tag:
+                    strong_tag = profile_league.find('strong')
+                    if strong_tag:
                 points_text = strong_tag.get_text(strip=True)
                 # Extract just the numeric part
                 points_match = re.search(r'(\d+)', points_text)
@@ -79,8 +79,8 @@ def get_points(link):
 
         # Nothing found
         return 0
-
-    except Exception as e:
+            
+            except Exception as e:
         print(f"Error fetching points: {str(e)}")
         return 0
 
@@ -92,18 +92,18 @@ def fetch_points_concurrently(participants_data, progress_callback=None):
     
     def fetch_points(participant_info):
         nonlocal processed
-        try:
+            try:
             # Get points from the URL
-            points = get_points(participant_info['profile_url'])
-            processed += 1
+                points = get_points(participant_info['profile_url'])
+                processed += 1
             
             # Update progress if callback provided
             if progress_callback:
                 progress_callback(processed, total)
                 
             return participant_info['id'], points
-        except Exception as e:
-            processed += 1
+            except Exception as e:
+                processed += 1
             if progress_callback:
                 progress_callback(processed, total)
             return participant_info['id'], 0
@@ -111,15 +111,15 @@ def fetch_points_concurrently(participants_data, progress_callback=None):
     # Use ThreadPoolExecutor to process URLs concurrently
     with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
         # Submit all tasks
-        future_to_participant = {
+            future_to_participant = {
             executor.submit(fetch_points, p): p['id'] for p in participants_data
-        }
-        
+            }
+            
         # Process results as they complete
-        for future in concurrent.futures.as_completed(future_to_participant):
-            try:
+            for future in concurrent.futures.as_completed(future_to_participant):
+                try:
                 participant_id, points = future.result()
-                results[participant_id] = points
+                    results[participant_id] = points
             except Exception:
                 participant_id = future_to_participant[future]
                 results[participant_id] = 0
@@ -145,7 +145,7 @@ def validate_csv(file_stream):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+        return render_template('index.html')
 
 @app.route('/download_example')
 def download_example():
@@ -253,8 +253,8 @@ def upload():
             def update_progress(processed, total):
                 nonlocal processed_count
                 processed_count = processed
-            
-            # Fetch points concurrently
+        
+        # Fetch points concurrently
             points_results = fetch_points_concurrently(valid_participants, update_progress)
             
             # Add final progress status
